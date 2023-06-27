@@ -3,7 +3,7 @@ name: Add model like runner
 on:
   push:
     branches:
-      - main
+      - rocm_ci
   pull_request:
     paths:
       - "src/**"
