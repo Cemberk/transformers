@@ -3,12 +3,13 @@ name: Self-hosted runner (push)
 on:
   workflow_run:
     workflows: ["Self-hosted runner (push-caller)"]
-    branches: ["main"]
+    branches: ["main", "rocm_ci"]
     types: [completed]
   push:
     branches:
       - ci_*
       - ci-*
+      - rocm_ci
     paths:
       - "src/**"
       - "tests/**"
