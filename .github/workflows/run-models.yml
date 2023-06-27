@@ -2,8 +2,9 @@ name: Model benchmark runner
 
 on:
   push:
-    branches: [ main ]
+    branches: [ rocm_ci ]
   pull_request:
+    branches: [ main ]
 
 
 jobs:
