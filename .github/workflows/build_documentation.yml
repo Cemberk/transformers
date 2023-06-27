@@ -16,5 +16,4 @@ jobs:
       package: transformers
       notebook_folder: transformers_doc
       languages: de en es fr it ko pt zh
-    secrets:
-      token: ${{ secrets.HUGGINGFACE_PUSH }}
+
