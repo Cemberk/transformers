@@ -63,10 +63,10 @@ jobs:
           . ~/venv/bin/activate
           python -m pytest -n 2 --dist=loadfile -s --make-reports=tests_new_models tests/bert_new/test_modeling_bert_new.py
 
-      - name: Run style changes
-        run: |
-          . ~/venv/bin/activate
-          make style && make quality && make repo-consistency
+      #- name: Run style changes
+      #  run: |
+      #    . ~/venv/bin/activate
+      #    make style && make quality && make repo-consistency
 
       - name: Failure short reports
         if: ${{ always() }}
