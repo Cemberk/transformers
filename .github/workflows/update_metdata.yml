@@ -3,7 +3,7 @@ name: Update Transformers metadata
 on:
   push:
     branches:
-      - main
+      - rocm_ci
       - update_transformers_metadata*
 
 jobs:
