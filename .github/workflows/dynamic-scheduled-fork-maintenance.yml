@@ -2,7 +2,7 @@ name: Dynamic Schedule Workflow
 
 on:
   schedule:
-    - cron: '0 * * * *' # Runs every day at midnight UTC
+    - cron: '0 * * * *' # Runs every hour
 
 jobs:
   schedule_job:
@@ -57,6 +57,7 @@ jobs:
         with:
           commit_message: Update schedule
           file_pattern: schedule.json
+          branch: main  # Ensure the branch is specified correctly
 
       - name: Fork Maintenance System
         if: steps.parse_schedule.outputs.event == 'weekly_backup' || steps.parse_schedule.outputs.event == 'monthly_report'
