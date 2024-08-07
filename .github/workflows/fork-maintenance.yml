@@ -1,0 +1,31 @@
+name: Run Scheduled Events
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  run-scheduled-events:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fork Maintenance System
+        uses: Cemberk/Fork-Maintenance-System@main 
+        with:
+          github_token: ${{ secrets.CRED_TOKEN }}
+          upstream_repo: "https://github.com/huggingface/transformers"
+          schedule_json: |
+            {
+              "upstream_main_branch": "main",
+              "upstream_release_branch": "v4.43-release",
+              "downstream_testing_branch": "rocm6.3_testing_rel4.43_testing",
+              "downstream_develop_branch": "develop",
+              "commits": [
+                "731f0308bb0a2796e28b68664f4ed050eab6dbfd",
+                "0c1b311bff616a4faf214461584a758fbab14a6f",
+                "5b2d4fec5abb8ffe755fe66ce0856fc066c561a6"
+              ]
+            }
+          pr_branch_prefix: "scheduled-merge"
+          unit_test_command: "pytest"
+          performance_test_command: "your-performance-test-command"
