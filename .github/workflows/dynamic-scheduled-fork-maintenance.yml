@@ -56,7 +56,7 @@ jobs:
               }
             ]
           }
-EOF
+          EOF
         
           SCHEDULE_FILE="schedule.json"
           SCHEDULE=$(cat $SCHEDULE_FILE)
