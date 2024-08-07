@@ -24,39 +24,39 @@ jobs:
         id: parse_schedule
         run: |
           cat <<EOF > schedule.json
-          {
-            "events": [
-              {
-                "name": "weekly_backup",
-                "upstream_main_branch": "main",
-                "upstream_release_branch": "v4.43-release",
-                "downstream_testing_branch": "rocm6.3_testing_rel4.43_testing",
-                "downstream_develop_branch": "develop",
-                "commits": [
-                  "731f0308bb0a2796e28b68664f4ed050eab6dbfd",
-                  "0c1b311bff616a4faf214461584a758fbab14a6f",
-                  "5b2d4fec5abb8ffe755fe66ce0856fc066c561a6"
-                ],
-                "branching_date": "2024-08-07T00:00:00Z",
-                "last_run": "2024-08-09T00:00:00Z"
-              },
-              {
-                "name": "monthly_update",
-                "upstream_main_branch": "main",
-                "upstream_release_branch": "v4.44-release",
-                "downstream_testing_branch": "rocm6.3_testing_rel4.44_testing",
-                "downstream_develop_branch": "develop",
-                "commits": [
-                  "731f0308bb0a2796e28b68664f4ed050eab6dbfd",
-                  "0c1b311bff616a4faf214461584a758fbab14a6f",
-                  "5b2d4fec5abb8ffe755fe66ce0856fc066c561a6"
-                ],
-                "branching_date": "2024-08-15T00:00:00Z",
-                "last_run": "2024-07-15T00:00:00Z"
-              }
-            ]
-          }
-          EOF
+{
+  "events": [
+    {
+      "name": "weekly_backup",
+      "upstream_main_branch": "main",
+      "upstream_release_branch": "v4.43-release",
+      "downstream_testing_branch": "rocm6.3_testing_rel4.43_testing",
+      "downstream_develop_branch": "develop",
+      "commits": [
+        "731f0308bb0a2796e28b68664f4ed050eab6dbfd",
+        "0c1b311bff616a4faf214461584a758fbab14a6f",
+        "5b2d4fec5abb8ffe755fe66ce0856fc066c561a6"
+      ],
+      "branching_date": "2024-08-07T00:00:00Z",
+      "last_run": "2024-08-09T00:00:00Z"
+    },
+    {
+      "name": "monthly_update",
+      "upstream_main_branch": "main",
+      "upstream_release_branch": "v4.44-release",
+      "downstream_testing_branch": "rocm6.3_testing_rel4.44_testing",
+      "downstream_develop_branch": "develop",
+      "commits": [
+        "731f0308bb0a2796e28b68664f4ed050eab6dbfd",
+        "0c1b311bff616a4faf214461584a758fbab14a6f",
+        "5b2d4fec5abb8ffe755fe66ce0856fc066c561a6"
+      ],
+      "branching_date": "2024-08-15T00:00:00Z",
+      "last_run": "2024-07-15T00:00:00Z"
+    }
+  ]
+}
+EOF
         
           SCHEDULE_FILE="schedule.json"
           SCHEDULE=$(cat $SCHEDULE_FILE)
