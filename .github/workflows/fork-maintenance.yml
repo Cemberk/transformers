@@ -16,11 +16,11 @@ jobs:
           upstream_repo: "https://github.com/huggingface/transformers"
           schedule_json: |
             {
-              "upstream_main_branch": "main",
-              "upstream_release_branch": "v4.43-release",
-              "downstream_main_branch": "upstream_sync",
+              "upstream_main_branch": "huggingface:main",
+              "upstream_release_branch": "huggingface:v4.43-release",
+              "downstream_main_branch": "Cemberk:upstream_sync",
               "downstream_testing_branch": "rocm6.3_testing_rel4.43_testing",
-              "downstream_develop_branch": "develop",
+              "downstream_develop_branch": "Cemberk:develop",
               "commits": [
                 "731f0308bb0a2796e28b68664f4ed050eab6dbfd",
                 "0c1b311bff616a4faf214461584a758fbab14a6f",
