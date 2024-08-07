@@ -22,19 +22,19 @@ jobs:
       - name: Parse and use schedule data
         id: parse_schedule
         run: |
-          SCHEDULE_FILE=schedule.json
+          SCHEDULE_FILE="schedule.json"
           SCHEDULE=$(cat $SCHEDULE_FILE)
           echo "Schedule: $SCHEDULE"
-
+          
           # Loop through each event in the schedule
           for row in $(jq -c '.events[]' $SCHEDULE_FILE); do
             NAME=$(echo $row | jq -r '.name')
             LAST_RUN=$(echo $row | jq -r '.last_run')
             BRANCHING_DATE=$(echo $row | jq -r '.branching_date')
-
+          
             # Get the current date
             CURRENT_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
+          
             if [[ "$CURRENT_DATE" > "$BRANCHING_DATE" && "$LAST_RUN" < "$BRANCHING_DATE" ]]; then
               echo "Event $NAME needs to run. Last run: $LAST_RUN, Branching date: $BRANCHING_DATE, Current date: $CURRENT_DATE"
               echo "::set-output name=event::$NAME"
