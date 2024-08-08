@@ -29,4 +29,4 @@ jobs:
             }
           pr_branch_prefix: "scheduled-merge"
           unit_test_command: ""
-          performance_test_command: "your-performance-test-command"
+          performance_test_command: ""
