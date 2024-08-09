@@ -30,7 +30,7 @@ def get_new_path(suffix="") -> str:
     return os.path.join(directory, str(uuid.uuid4()) + suffix)
 
 
-def fake_react_json_llm(messages, stop_sequences=None) -> str:
+def fake_react_json_llm(messages, stop_sequences=None, grammar=None) -> str:
     prompt = str(messages)
 
     if "special_marker" not in prompt:
@@ -53,7 +53,7 @@ Action:
 """
 
 
-def fake_react_code_llm(messages, stop_sequences=None) -> str:
+def fake_react_code_llm(messages, stop_sequences=None, grammar=None) -> str:
     prompt = str(messages)
     if "special_marker" not in prompt:
         return """
@@ -119,7 +119,7 @@ final_answer(res)
 """
 
 
-def fake_code_llm_oneshot(messages, stop_sequences=None) -> str:
+def fake_code_llm_oneshot(messages, stop_sequences=None, grammar=None) -> str:
     return """
 Thought: I should multiply 2 by 3.6452. special_marker
 Code:
@@ -130,7 +130,7 @@ final_answer(result)
 """
 
 
-def fake_code_llm_no_return(messages, stop_sequences=None) -> str:
+def fake_code_llm_no_return(messages, stop_sequences=None, grammar=None) -> str:
     return """
 Thought: I should multiply 2 by 3.6452. special_marker
 Code:
@@ -198,7 +198,7 @@ Action:
         )
         agent.run("What is 2 multiplied by 3.6452?")
         assert len(agent.logs) == 7
-        assert type(agent.logs[-1]["error"]) == AgentMaxIterationsError
+        assert type(agent.logs[-1]["error"]) is AgentMaxIterationsError
 
     @require_torch
     def test_init_agent_with_different_toolsets(self):
