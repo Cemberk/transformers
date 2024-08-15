@@ -1,5 +1,11 @@
 name: Run Scheduled Events
 
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
+
 on:
   workflow_dispatch:
   schedule:
