@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fork Maintenance System
-        uses: Cemberk/Fork-Maintenance-System@main 
+        uses: Cemberk/Fork-Maintenance-System@docker 
         with:
           github_token: ${{ secrets.CRED_TOKEN }}
           upstream_repo: "https://github.com/huggingface/transformers"
