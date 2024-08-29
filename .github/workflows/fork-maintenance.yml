@@ -34,7 +34,7 @@ jobs:
               ]
             }
           pr_branch_prefix: "scheduled-merge"
-          conda_environment: >
+          conda_environment: |
             name: my_new_env
             channels:
               - defaults
