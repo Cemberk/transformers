@@ -60,7 +60,7 @@ jobs:
               - zlib=1.2.13=h5eee18b_1
               - pip:
                   - absl-py==2.1.0
-                  - accelerate==0.34.0.dev0
+                  - accelerate==0.33.0
                   - adal==1.2.7
                   - aiohappyeyeballs==2.3.4
                   - aiohttp==3.10.0
