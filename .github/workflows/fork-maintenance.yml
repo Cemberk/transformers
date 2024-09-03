@@ -297,6 +297,7 @@ jobs:
                   - tifffile==2024.7.24
                   - timeout-decorator==0.5.0
                   - timm==1.0.9
+                  - "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.1"
                   - tokenizers==0.19.1
                   - toml==0.10.2
                   - tomli==2.0.1
