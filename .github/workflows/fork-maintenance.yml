@@ -121,7 +121,6 @@ jobs:
                   - datasets==2.21.0
                   - decorator==5.1.1
                   - decord==0.6.0
-                  - detectron2==0.6
                   - dill==0.3.4
                   - django==4.2.14
                   - dm-tree==0.1.8
