@@ -305,7 +305,7 @@ jobs:
                   - torchvision==0.19.0 --extra-index-url https://download.pytorch.org/whl/rocm6.1
                   - tornado==6.4.1
                   - tqdm==4.66.4
-                  - transformers==4.43.0.dev0
+                  - transformers==4.43.0
                   - triton==3.0.0
                   - types-python-dateutil==2.9.0.20240821
                   - typing-extensions==4.12.2
