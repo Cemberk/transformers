@@ -256,7 +256,7 @@ jobs:
                   - rapidfuzz==3.9.6
                   - referencing==0.35.1
                   - regex==2024.7.24
-                  - requests==2.29.0
+                  - requests==2.32.2
                   - requests-oauthlib==2.0.0
                   - rich==13.8.0
                   - rjieba==0.1.11
