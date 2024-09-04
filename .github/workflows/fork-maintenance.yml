@@ -311,7 +311,7 @@ jobs:
                   - typing-extensions==4.12.2
                   - tzdata==2024.1
                   - unittest-xml-reporting==3.2.0
-                  - urllib3<2
+                  - urllib3==1.26
                   - watchdog==4.0.2
                   - werkzeug==3.0.3
                   - wrapt==1.16.0
