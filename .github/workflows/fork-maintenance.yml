@@ -90,7 +90,7 @@ jobs:
                   - azure-mgmt-resource==23.1.1
                   - azure-mgmt-storage==21.2.1
                   - azureml==0.2.7
-                  - azureml-core==1.57.0
+                  - azureml-core
                   - backports-tempfile==1.0
                   - backports-weakref==1.0.post1
                   - bcrypt==4.2.0
