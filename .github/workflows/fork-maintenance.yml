@@ -125,7 +125,7 @@ jobs:
                   - django==4.2.14
                   - dm-tree==0.1.8
                   - docker==7.1.0
-                  - elastic-transport==8.15.0
+                  - elastic-transport
                   - elasticsearch==8.15.0
                   - etils==1.5.2
                   - eval-type-backport==0.2.0
