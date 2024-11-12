@@ -1,4 +1,4 @@
-name: Run Scheduled Events Docker
+name: Run Scheduled Events Docker last
 
 permissions:
   actions: write
