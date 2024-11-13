@@ -38,6 +38,7 @@ jobs:
         echo "Current directory after changing to tests: $$(pwd)"
         
         # Write Python code to a temporary script
+        # Write Python code to a temporary script
         cat << 'EOF' > get_folders.py
         import os
         
@@ -76,49 +77,55 @@ jobs:
         # Print the first 5 directories
         print(" ".join(d[:5]))
         EOF
-      
+        
         echo "Contents of get_folders.py:"
         cat get_folders.py
         
         # Execute the Python script and capture the output and errors
-        folders=$$(python3 get_folders.py 2>&1)
-        exit_code=$$?
+        folders=$(python3 get_folders.py 2>&1)
+        exit_code=$?
         
-        echo "Python script exit code: $$exit_code"
+        # Optionally, you can print the output and exit code for debugging
+        echo "Folders Output:"
+        echo "$folders"
+        echo "Exit Code: $exit_code"
+
+        
+        echo "Python script exit code: $exit_code"
         echo "Output from get_folders.py:"
-        echo "$$folders"
+        echo "$folders"
         
-        if [ "$$exit_code" -ne 0 ]; then
-          echo "Python script failed with exit code $$exit_code"
-          exit $$exit_code
+        if [ "$exit_code" -ne 0 ]; then
+          echo "Python script failed with exit code $exit_code"
+          exit $exit_code
         fi
         
         cd ..
         
         # Convert folders string into an array
-        IFS=' ' read -r -a folder_array <<< "$$folders"
+        IFS=' ' read -r -a folder_array <<< "$folders"
         
         echo "Folders obtained as array:"
-        printf "'%s'\n" "$${folder_array[@]}"
+        printf "'%s'\n" "${folder_array[@]}"
         
-        if [ "$${#folder_array[@]}" -eq 0 ]; then
+        if [ "${#folder_array[@]}" -eq 0 ]; then
           echo "No folders found to run tests on."
           exit 1
         fi
         
         # Iterate over each folder and run pytest
-        for folder in "$${folder_array[@]}"; do
-          echo "Running pytest on folder: $$folder"
-          pytest tests/$$folder -v \
-            --make-reports=huggingface_unit_tests_$${machine_type}_run_models_gpu_$$folder \
+        for folder in "${folder_array[@]}"; do
+          echo "Running pytest on folder: $folder"
+          pytest tests/$folder -v \
+            --make-reports=huggingface_unit_tests_${machine_type}_run_models_gpu_$folder \
             -rfEs --continue-on-collection-errors \
             -m "not not_device_test" -p no:cacheprovider
         done
         
         # Find and display stats
-        allstats=$$(find reports -name stats.txt)
+        allstats=$(find reports -name stats.txt)
         echo "All stats files found:"
-        echo "$$allstats"
+        echo "$allstats"
         
         for stat in $$allstats; do
           echo "Stat file: $$stat"
