@@ -27,110 +27,112 @@ jobs:
         pip install parameterized && 
         pip install -e .
       #unit_test_command: cd tests; folders=$$(python3 -c 'import os; tests = os.getcwd(); models = "models"; model_tests = os.listdir(os.path.join(tests, models)); d1 = sorted(list(filter(os.path.isdir, os.listdir(tests)))); d2 = sorted(list(filter(os.path.isdir, [os.path.join(models, x) for x in model_tests]))); d1.remove(models); d = d2 + d1; print(" ".join(d[:5]))'); cd ..; for folder in \${folders[@]}; do pytest tests/\${folder} -v --make-reports=huggingface_unit_tests_\${machine_type}_run_models_gpu_\${folder} -rfEs --continue-on-collection-errors -m \"not not_device_test\" -p no:cacheprovider; done; allstats=\$(find reports -name stats.txt);  for stat in \${allstats[@]}; do echo \$stat; cat \$stat; done
-      unit_test_command: |
-        set -x  # Enable shell debugging
-        echo "Running unit tests inside Docker..."
+      unit_test_command: cd tests; folders=\$(python3 -c \import os; tests = os.getcwd(); models = \"models\";  model_tests = os.listdir(os.path.join(tests, models)); d1 = sorted(list(filter(os.path.isdir, os.listdir(tests)))); d2 = sorted(list(filter(os.path.isdir, [os.path.join(models, x) for x in model_tests]))); d1.remove(models); d = d2 + d1; print(\" \".join(d[:5]))' ); cd ..; for folder in \${folders[@]}; do pytest tests/\${folder} -v --make-reports=huggingface_unit_tests_\${machine_type}_run_models_gpu_\${folder} -rfEs --continue-on-collection-errors -m \"not not_device_test\" -p no:cacheprovider; done;  allstats=\$(find reports -name stats.txt);  for stat in \${allstats[@]}; do echo \$stat; cat \$stat; done
+  
+#      unit_test_command: |
+#        set -x  # Enable shell debugging
+#        echo "Running unit tests inside Docker..."
         
-        echo "Current directory before changing to tests: $$(pwd)"
+#        echo "Current directory before changing to tests: $$(pwd)"
         
-        cd tests || { echo "Failed to change directory to 'tests'"; exit 1; }
+#        cd tests || { echo "Failed to change directory to 'tests'"; exit 1; }
         
-        echo "Current directory after changing to tests: $$(pwd)"
+#        echo "Current directory after changing to tests: $$(pwd)"
         
         # Write Python code to a temporary script
         # Write Python code to a temporary script
-        cat << 'EOF' > get_folders.py
-        import os
+#        cat << 'EOF' > get_folders.py
+#        import os
         
-        tests = os.getcwd()
-        models = "models"
+#        tests = os.getcwd()
+#        models = "models"
         
         # Debug: Print current working directory
-        print(f"Current working directory: {tests}")
+#        print(f"Current working directory: {tests}")
         
         # Get list of model tests
-        model_tests_path = os.path.join(tests, models)
-        if not os.path.exists(model_tests_path):
-            print(f"Models path does not exist: {model_tests_path}")
-            exit(1)
+#        model_tests_path = os.path.join(tests, models)
+#        if not os.path.exists(model_tests_path):
+#            print(f"Models path does not exist: {model_tests_path}")
+#            exit(1)
         
-        model_tests = os.listdir(model_tests_path)
+#        model_tests = os.listdir(model_tests_path)
         
         # Debug: Print model tests
-        print(f"Model tests: {model_tests}")
+#        print(f"Model tests: {model_tests}")
         
-        d1 = sorted([d for d in os.listdir(tests) if os.path.isdir(os.path.join(tests, d))])
-        d2 = sorted([d for d in model_tests if os.path.isdir(os.path.join(models, d))])
+#        d1 = sorted([d for d in os.listdir(tests) if os.path.isdir(os.path.join(tests, d))])
+#        d2 = sorted([d for d in model_tests if os.path.isdir(os.path.join(models, d))])
         
         # Debug: Print directories
-        print(f"d1 directories: {d1}")
-        print(f"d2 directories: {d2}")
+#        print(f"d1 directories: {d1}")
+#        print(f"d2 directories: {d2}")
         
-        if models in d1:
-            d1.remove(models)
+#        if models in d1:
+#            d1.remove(models)
         
-        d = d2 + d1
+#        d = d2 + d1
         
         # Debug: Print combined directory list
-        print(f"Combined directories (d): {d}")
+#        print(f"Combined directories (d): {d}")
         
         # Print the first 5 directories
-        print(" ".join(d[:5]))
-        EOF
+        #print(" ".join(d[:5]))
+        #EOF
         
-        echo "Contents of get_folders.py:"
-        cat get_folders.py
+#        echo "Contents of get_folders.py:"
+#        cat get_folders.py
         
         # Execute the Python script and capture the output and errors
-        folders=$(python3 get_folders.py 2>&1)
-        exit_code=$?
+#        folders=$(python3 get_folders.py 2>&1)
+#        exit_code=$?
         
         # Optionally, you can print the output and exit code for debugging
-        echo "Folders Output:"
-        echo "$folders"
-        echo "Exit Code: $exit_code"
+#        echo "Folders Output:"
+#        echo "$folders"
+#        echo "Exit Code: $exit_code"
 
         
-        echo "Python script exit code: $exit_code"
-        echo "Output from get_folders.py:"
-        echo "$folders"
+#        echo "Python script exit code: $exit_code"
+#        echo "Output from get_folders.py:"
+#        echo "$folders"
         
-        if [ "$exit_code" -ne 0 ]; then
-          echo "Python script failed with exit code $exit_code"
-          exit $exit_code
-        fi
+#        if [ "$exit_code" -ne 0 ]; then
+#          echo "Python script failed with exit code $exit_code"
+#          exit $exit_code
+#        fi
         
-        cd ..
+#        cd ..
         
         # Convert folders string into an array
-        IFS=' ' read -r -a folder_array <<< "$folders"
+#        IFS=' ' read -r -a folder_array <<< "$folders"
         
-        echo "Folders obtained as array:"
-        printf "'%s'\n" "${folder_array[@]}"
+#        echo "Folders obtained as array:"
+#        printf "'%s'\n" "${folder_array[@]}"
         
-        if [ "${#folder_array[@]}" -eq 0 ]; then
-          echo "No folders found to run tests on."
-          exit 1
-        fi
+#        if [ "${#folder_array[@]}" -eq 0 ]; then
+#          echo "No folders found to run tests on."
+#          exit 1
+#        fi
         
         # Iterate over each folder and run pytest
-        for folder in "${folder_array[@]}"; do
-          echo "Running pytest on folder: $folder"
-          pytest tests/$folder -v \
-            --make-reports=huggingface_unit_tests_${machine_type}_run_models_gpu_$folder \
-            -rfEs --continue-on-collection-errors \
-            -m "not not_device_test" -p no:cacheprovider
-        done
+#        for folder in "${folder_array[@]}"; do
+#          echo "Running pytest on folder: $folder"
+#          pytest tests/$folder -v \
+#            --make-reports=huggingface_unit_tests_${machine_type}_run_models_gpu_$folder \
+#            -rfEs --continue-on-collection-errors \
+#            -m "not not_device_test" -p no:cacheprovider
+#        done
         
         # Find and display stats
-        allstats=$(find reports -name stats.txt)
-        echo "All stats files found:"
-        echo "$allstats"
+#        allstats=$(find reports -name stats.txt)
+#        echo "All stats files found:"
+#        echo "$allstats"
         
-        for stat in $$allstats; do
-          echo "Stat file: $$stat"
-          cat "$$stat"
-        done
+#        for stat in $$allstats; do
+#          echo "Stat file: $$stat"
+#          cat "$$stat"
+#        done
 
       performance_test_command: 'echo \"python examples/pytorch/language-modeling/run_mlm.py --model_name_or_path bert-base-uncased --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 --do_train --do_eval --output_dir /tmp/test-mlm --per_device_train_batch_size 8 --per_device_eval_batch_size 8 --max_steps 500\"'
       docker_image: 'rocm/pytorch:latest'
