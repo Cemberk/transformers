@@ -28,15 +28,7 @@ jobs:
         pip install -e .
       unit_test_command: |
         cd tests; 
-        folders=$$(python3 -c "import os; \
-        tests = os.getcwd(); \
-        models = 'models'; \
-        model_tests = os.listdir(os.path.join(tests, models)); \
-        d1 = sorted(list(filter(os.path.isdir, os.listdir(tests)))); \
-        d2 = sorted(list(filter(os.path.isdir, [os.path.join(models, x) for x in model_tests]))); \
-        d1.remove(models); \
-        d = d2 + d1; \
-        print(' '.join(d[:5]))");
+        folders=$$(python3 -c 'import os; tests = os.getcwd(); models = "models"; model_tests = os.listdir(os.path.join(tests, models)); d1 = sorted(list(filter(os.path.isdir, os.listdir(tests)))); d2 = sorted(list(filter(os.path.isdir, [os.path.join(models, x) for x in model_tests]))); d1.remove(models); d = d2 + d1; print(" ".join(d[:5]))');
         cd ..; 
         for folder in \${folders[@]}; do pytest tests/\${folder} -v --make-reports=huggingface_unit_tests_\${machine_type}_run_models_gpu_\${folder} -rfEs --continue-on-collection-errors -m \"not not_device_test\" -p no:cacheprovider; done;  
         allstats=\$(find reports -name stats.txt);  
