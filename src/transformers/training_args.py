@@ -568,9 +568,12 @@ class TrainingArguments:
                 *after* initializing the `TrainingArguments`, else it will not be applied.
             </Tip>
 
+<<<<<<< HEAD
         ortmodule (:obj:`bool`, `optional`):
             Use `ORTModule <https://github.com/microsoft/onnxruntime>`__.
 
+=======
+>>>>>>> origin/upstream_sync
         accelerator_config (`str`, `dict`, or `AcceleratorConfig`, *optional*):
             Config to be used with the internal `Accelerator` implementation. The value is either a location of
             accelerator json config file (e.g., `accelerator_config.json`), an already loaded json file as `dict`,

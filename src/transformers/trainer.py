@@ -1725,12 +1725,16 @@ class Trainer:
 
         # train/eval could be run multiple-times - if already wrapped, don't re-wrap it again
         if self.accelerator.unwrap_model(model) is not model:
+<<<<<<< HEAD
             if self.args.ort:
                 from torch_ort import ORTModule
                 if type(model) is not ORTModule:
                     return model
             else:
                 return model
+=======
+            return model
+>>>>>>> origin/upstream_sync
 
         # Mixed precision training with apex (torch < 1.6)
         if self.use_apex and training:
@@ -2450,12 +2454,15 @@ class Trainer:
         self._total_loss_scalar += tr_loss.item()
         effective_global_step = max(self.state.global_step, 0.001)  # Avoid ZeroDivisionError
         train_loss = self._total_loss_scalar / effective_global_step
+<<<<<<< HEAD
 
         metrics = speed_metrics("train", start_time, num_samples=num_train_samples, num_steps=self.state.max_steps,num_tokens=num_train_tokens,)
 
         total_samples = self.state.global_step*total_train_batch_size if args.max_steps > 0 else num_examples*num_train_epochs
         perf_samples = total_samples - self.args.warmup_steps*total_train_batch_size
         stable_train_metrics = speed_metrics("stable_train", start_train_stable_time, perf_samples)
+=======
+>>>>>>> origin/upstream_sync
 
         self.store_flos()
         metrics["total_flos"] = self.state.total_flos
