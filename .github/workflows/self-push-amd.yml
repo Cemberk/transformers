@@ -18,8 +18,6 @@ env:
   HF_HUB_READ_TOKEN: ${{ secrets.HF_HUB_READ_TOKEN }}
 
 jobs:
-<<<<<<< HEAD
-=======
   check_runner_status:
     name: Check Runner Status
     runs-on: ubuntu-22.04
@@ -32,17 +30,12 @@ jobs:
       - name: Check Runner Status
         run: python utils/check_self_hosted_runner.py --target_runners amd-mi210-single-gpu-ci-runner-docker --token ${{ secrets.ACCESS_REPO_INFO_TOKEN }}
 
->>>>>>> origin/upstream_sync
   check_runners:
     name: Check Runners
     strategy:
       matrix:
         machine_type: [single-gpu, multi-gpu]
-<<<<<<< HEAD
-    runs-on: rocm
-=======
-    runs-on: [self-hosted, amd-gpu, '${{ matrix.machine_type }}', '${{ inputs.gpu_flavor }}']
->>>>>>> origin/upstream_sync
+    runs-on: [rocm, self-hosted, amd-gpu, '${{ matrix.machine_type }}', '${{ inputs.gpu_flavor }}']
     container:
       image: huggingface/transformers-pytorch-amd-gpu-push-ci  # <--- We test only for PyTorch for now
       options: --device /dev/kfd --device /dev/dri --env HIP_VISIBLE_DEVICES --env ROCR_VISIBLE_DEVICES --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
@@ -61,11 +54,7 @@ jobs:
     strategy:
       matrix:
         machine_type: [single-gpu, multi-gpu]
-<<<<<<< HEAD
-    runs-on: rocm
-=======
-    runs-on: [self-hosted, amd-gpu, '${{ matrix.machine_type }}', '${{ inputs.gpu_flavor }}']
->>>>>>> origin/upstream_sync
+    runs-on: [rocm, self-hosted, amd-gpu, '${{ matrix.machine_type }}', '${{ inputs.gpu_flavor }}']
     container:
       image: huggingface/transformers-pytorch-amd-gpu-push-ci  # <--- We test only for PyTorch for now
       options: --device /dev/kfd --device /dev/dri --env HIP_VISIBLE_DEVICES --env ROCR_VISIBLE_DEVICES --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
@@ -170,11 +159,7 @@ jobs:
       matrix:
         folders: ${{ fromJson(needs.setup_gpu.outputs.matrix) }}
         machine_type: [single-gpu, multi-gpu]
-<<<<<<< HEAD
-    runs-on: rocm
-=======
-    runs-on: [self-hosted, amd-gpu, '${{ matrix.machine_type }}', '${{ inputs.gpu_flavor }}']
->>>>>>> origin/upstream_sync
+    runs-on: [rocm, self-hosted, amd-gpu, '${{ matrix.machine_type }}', '${{ inputs.gpu_flavor }}']
     container:
       image: huggingface/transformers-pytorch-amd-gpu-push-ci  # <--- We test only for PyTorch for now
       options: --device /dev/kfd --device /dev/dri --env HIP_VISIBLE_DEVICES --env ROCR_VISIBLE_DEVICES --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
@@ -276,13 +261,10 @@ jobs:
     needs: [
         check_runners,
         setup_gpu,
-<<<<<<< HEAD
         run_tests_amdgpu
-=======
         run_models_gpu,
 #        run_tests_torch_cuda_extensions_single_gpu,
 #        run_tests_torch_cuda_extensions_multi_gpu
->>>>>>> origin/upstream_sync
     ]
     steps:
       - name: Preliminary job status
@@ -329,32 +311,3 @@ jobs:
           echo "updated branch = $(git branch --show-current)"
           git checkout ${{ env.CI_SHA }}
           echo "log = $(git log -n 1)"
-<<<<<<< HEAD
-=======
-
-      - uses: actions/download-artifact@v4
-      - name: Send message to Slack
-        env:
-          CI_SLACK_BOT_TOKEN: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          CI_SLACK_CHANNEL_ID: ${{ secrets.CI_SLACK_CHANNEL_ID }}
-          CI_SLACK_CHANNEL_ID_DAILY: ${{ secrets.CI_SLACK_CHANNEL_ID_DAILY }}
-          CI_SLACK_CHANNEL_ID_AMD: ${{ secrets.CI_SLACK_CHANNEL_ID_AMD }}
-          CI_SLACK_CHANNEL_DUMMY_TESTS: ${{ secrets.CI_SLACK_CHANNEL_DUMMY_TESTS }}
-          CI_SLACK_REPORT_CHANNEL_ID: ${{ secrets.CI_SLACK_CHANNEL_ID_AMD }}
-          ACCESS_REPO_INFO_TOKEN: ${{ secrets.ACCESS_REPO_INFO_TOKEN }}
-          CI_EVENT: Push CI (AMD) - ${{ inputs.gpu_flavor }}
-          CI_TITLE_PUSH: ${{ github.event.head_commit.message }}
-          CI_TITLE_WORKFLOW_RUN: ${{ github.event.workflow_run.head_commit.message }}
-          CI_SHA: ${{ env.CI_SHA }}
-          RUNNER_STATUS: ${{ needs.check_runner_status.result }}
-          RUNNER_ENV_STATUS: ${{ needs.check_runners.result }}
-          SETUP_STATUS: ${{ needs.setup_gpu.result }}
-
-        # We pass `needs.setup_gpu.outputs.matrix` as the argument. A processing in `notification_service.py` to change
-        # `models/bert` to `models_bert` is required, as the artifact names use `_` instead of `/`.
-        run: |
-          pip install huggingface_hub
-          pip install slack_sdk
-          pip show slack_sdk
-          python utils/notification_service.py "${{ needs.setup_gpu.outputs.matrix }}"
->>>>>>> origin/upstream_sync
