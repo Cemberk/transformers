@@ -17,6 +17,7 @@ jobs:
       - name: Fork Maintenance System
         uses: Cemberk/Fork-Maintenance-System@artifacts
         with:
+          platform: 'gfx90a'
           github_token: ${{ secrets.CRED_TOKEN }}
           upstream_repo: "https://github.com/huggingface/transformers"
           schedule_json: |
