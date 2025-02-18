@@ -1,6 +1,7 @@
 name: AMD mi250 scheduled CI caller
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["Self-hosted runner (AMD scheduled CI caller)"]
     branches: ["main"]
