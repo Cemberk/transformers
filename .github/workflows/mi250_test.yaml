@@ -1,4 +1,4 @@
-name: Self-hosted runner (AMD mi250 scheduled CI caller)
+name: AMD mi250 scheduled CI caller
 
 on:
   workflow_run:
