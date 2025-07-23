@@ -26,6 +26,10 @@ from typing import Any, Dict, List, Tuple, Set
 import subprocess
 import tempfile
 
+# Import important models and CPU test identifiers from external modules
+from utils.test_fetcher import IMPORTANT_MODELS
+from conftest import NOT_DEVICE_TESTS
+
 # Path constants - adjusted for utils folder
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
 UTILS_DIR = SCRIPT_PATH.parent
@@ -40,20 +44,15 @@ TEST_GLOB_ROOT = TEST_ROOT
 PY_EXT = (".py")
 DEBUG_MODE = False
 
-# Important models for P-1 priority
-IMPORTANT_MODELS = [
-    "auto", "bert", "clip", "t5", "xlm-roberta", "gpt2", "bart", "mpnet", "gpt-j", 
-    "wav2vec2", "deberta-v2", "layoutlm", "llama", "opt", "longformer", "vit", 
-    "whisper", "tapas", "vilt", "clap", "detr", "owlvit", "dpt", "videomae"
-]
-
+# Create normalized set of important models for efficient lookup
+# This includes various naming conventions (dashes, underscores, etc.)
 IMPORTANT_MODELS_SET = set()
 for model in IMPORTANT_MODELS:
     IMPORTANT_MODELS_SET.add(model.lower())
     IMPORTANT_MODELS_SET.add(model.replace("-", "_"))
     IMPORTANT_MODELS_SET.add(model.replace("_", "-"))
 
-# CPU test identification decorators
+# CPU test identification decorators - these mark tests that should run on CPU only
 CPU_DECOS = {
     "not_device_test", "is_flaky", "slow", "tooslow", "is_staging_test",
     "is_pt_tf_cross_test", "is_pt_flax_cross_test", "is_pipeline_test", "is_agent_test",
@@ -71,12 +70,13 @@ CPU_DECOS = {
     "require_peft", "require_read_token"
 }
 
+# CPU test path patterns - additional patterns to identify CPU-only tests
 CPU_PATH_PATTERNS = [
     "cpu", "not_device", "flaky", "slow", "pipeline", "agent",
     "cross_test", "audio", "text_processing", "data_processing"
 ]
 
-# P0: Critical GPU tests
+# P0: Critical GPU tests - these require GPU/accelerator resources and are high priority
 P0_DECOS = {
     "require_torch_gpu", "require_torch_accelerator", "require_torch_fp16", "require_torch_bf16", 
     "require_torch_tf32", "require_fp8", "require_torch_bf16_gpu", "require_torch_bf16_cpu",
@@ -93,7 +93,7 @@ P0_DECOS = {
     "require_faiss", "require_flute_hadamard", "run_first"
 }
 
-# P1: Framework basics
+# P1: Framework basics - core framework dependencies without device specificity
 FRAMEWORK_DECOS = {
     "require_torch", "require_tf", "require_flax", "require_jax", "require_torch_or_tf",
     "require_tokenizers", "require_sentencepiece", "require_sacremoses", "require_tiktoken", 
@@ -103,34 +103,80 @@ FRAMEWORK_DECOS = {
     "require_gguf", "require_tensorboard"
 }
 
+# P2: Additional decorators (currently empty, but reserved for future use)
 P2_DECOS = set()
+
+# Decorator sets for slow tests and pipeline tests
 SLOW_DECOS = {"slow", "tooslow"}
 PIPELINE_DECOS = {"is_pipeline_test", "is_agent_test"}
+
+# Directories to exclude from test discovery
 EXCLUDE_DIRS = {"examples", "templates"}
 
 def is_excluded(path: pathlib.Path) -> bool:
+    """Check if a path should be excluded from test discovery."""
     if any(part in EXCLUDE_DIRS for part in path.parts):
         return True
     if any(pattern in str(path) for pattern in ["__pycache__", ".git", ".pytest_cache"]):
         return True
     return False
 
+def is_not_device_test(nodeid: str) -> bool:
+    """
+    Check if a test is a CPU-only test based on the transformers NOT_DEVICE_TESTS list.
+    This function checks if any of the test name patterns from NOT_DEVICE_TESTS are present in the nodeid.
+    """
+    return any(test_name in nodeid for test_name in NOT_DEVICE_TESTS)
+
 def is_cpu_test(decos: set[str], nodeid: str, file_path: pathlib.Path = None) -> bool:
+    """
+    Determine if a test should be classified as CPU-only.
+    
+    Uses multiple strategies:
+    1. Decorator-based detection (CPU_DECOS)
+    2. Transformers NOT_DEVICE_TESTS patterns
+    3. Path pattern matching
+    4. Pipeline and slow test detection
+    """
+    # Check decorator-based CPU test markers
     if decos & CPU_DECOS:
         return True
+    
+    # Use transformers CPU test identification
+    if is_not_device_test(nodeid):
+        return True
+    
+    # Check for CPU-related path patterns
     nodeid_lower = nodeid.lower()
     if any(pattern in nodeid_lower for pattern in CPU_PATH_PATTERNS):
         return True
+    
+    # Explicit not_device_test decorator check (redundant but kept for safety)
     if "not_device_test" in decos:
         return True
+    
+    # Pipeline and agent tests are typically CPU-only
     if decos & PIPELINE_DECOS:
         return True
+    
+    # Slow tests are often CPU-only
     if decos & SLOW_DECOS:
         return True
+    
     return False
 
 def is_important_model_test(nodeid: str, file_path: pathlib.Path = None) -> bool:
+    """
+    Check if a test is for an important model that should be in P-1 priority.
+    
+    This function looks for:
+    1. Model directory patterns (tests/models/model_name/)
+    2. Test function name patterns containing important model names
+    3. Special handling for 'auto' model patterns
+    """
     nodeid_lower = nodeid.lower()
+    
+    # Check for model directory structure: tests/models/model_name/
     models_match = re.search(r'tests/models/([^/]+)/', nodeid_lower)
     if models_match:
         model_name = models_match.group(1)
@@ -140,29 +186,39 @@ def is_important_model_test(nodeid: str, file_path: pathlib.Path = None) -> bool
             any(important in model_name for important in IMPORTANT_MODELS_SET if len(important) > 3)):
             return True
 
+    # Check for important model names in test function names
     for important_model in IMPORTANT_MODELS_SET:
-        if len(important_model) > 3:
+        if len(important_model) > 3:  # Avoid false positives with very short names
             patterns = [f"test_{important_model}", f"test_modeling_{important_model}",
                        f"{important_model}_test", f"modeling_{important_model}"]
             for pattern in patterns:
                 if pattern in nodeid_lower:
                     return True
 
+    # Special handling for "auto" model patterns (AutoModel, AutoTokenizer, etc.)
     if "auto" in IMPORTANT_MODELS_SET:
         auto_patterns = ["test_auto_", "/auto/", "auto_test", "autoprocessor", 
                         "automodel", "autotokenizer"]
         for pattern in auto_patterns:
             if pattern in nodeid_lower:
                 return True
+    
     return False
 
 def discover_tests_with_pytest() -> list[str]:
+    """
+    Use pytest to discover all tests in the repository.
+    
+    This is the primary method for test discovery as it respects pytest configuration
+    and handles complex test parametrization correctly.
+    """
     print("Using pytest to discover all tests...", file=sys.stderr)
     cmd = [sys.executable, "-m", "pytest", str(TEST_GLOB_ROOT), "--collect-only", "--quiet",
            "--continue-on-collection-errors", "-p", "no:cacheprovider",
            "--ignore-glob=**/test_torch_compile.py", "--ignore-glob=**/test_doctests.py",
            "--ignore-glob=**/test_torchao.py", "--ignore-glob=**/test_trainer.py"]
 
+    # Set environment variables to ensure consistent test discovery
     env = os.environ.copy()
     env.update({"RUN_SLOW": "0", "CUDA_VISIBLE_DEVICES": "", "TRANSFORMERS_VERBOSITY": "error",
                 "TRANSFORMERS_TEST_DEVICE": "cpu"})
@@ -177,17 +233,19 @@ def discover_tests_with_pytest() -> list[str]:
         nodeids = []
         for line in result.stdout.splitlines():
             line = line.strip()
+            # Parse pytest collection output to extract test nodeids
             if (line.startswith("tests/") and "::" in line and
                 not line.startswith("<") and not line.startswith("=")):
                 nodeid = line.strip()
-                if nodeid.endswith(">"):
+                if nodeid.endswith(">"):  # Skip malformed entries
                     continue
-                if " " in nodeid:
+                if " " in nodeid:  # Skip entries with spaces (likely not nodeids)
                     continue
                 nodeids.append(nodeid)
 
         print(f"Pytest discovered {len(nodeids)} tests", file=sys.stderr)
         
+        # Fallback to file-based discovery if pytest found very few tests
         if len(nodeids) < 1000:
             print("Low test count from direct nodeids, complementing with file-based discovery...", file=sys.stderr)
             file_based_nodeids = discover_tests_from_files()
@@ -205,6 +263,12 @@ def discover_tests_with_pytest() -> list[str]:
         return discover_tests_from_files()
 
 def discover_tests_from_files() -> list[str]:
+    """
+    Fallback method for test discovery by parsing Python files directly.
+    
+    This method is used when pytest discovery fails or times out.
+    It manually parses test files to find test functions and classes.
+    """
     print("Using file-based discovery...", file=sys.stderr)
     nodeids = []
     files_processed = 0
@@ -232,12 +296,15 @@ def discover_tests_from_files() -> list[str]:
         file_str = str(rel_path).replace('\\', '/')
         has_parameterized = bool(re.search(r'@parameterized\.expand', content))
 
+        # Handle parameterized tests differently (they're harder to parse statically)
         if has_parameterized:
             nodeids.append(file_str)
         else:
+            # Extract test functions and classes using regex
             test_functions = re.findall(r'def\s+(test_\w+)\s*\(', content)
             test_classes = re.findall(r'class\s+(\w*Test\w*)\s*[:\(]', content)
 
+            # Process test classes and their methods
             if test_classes:
                 for test_class in test_classes:
                     class_methods = re.findall(
@@ -248,13 +315,14 @@ def discover_tests_from_files() -> list[str]:
                         for method in methods:
                             nodeids.append(f"{file_str}::{test_class}::{method}")
 
+            # Process standalone test functions (not in classes)
             for test_func in test_functions:
                 func_pos = content.find(f"def {test_func}")
                 if func_pos > 0:
                     before_func = content[:func_pos]
                     last_class = before_func.rfind("class ")
                     last_def = before_func.rfind("def ")
-                    if last_class > last_def:
+                    if last_class > last_def:  # Function is inside a class
                         continue
                 nodeids.append(f"{file_str}::{test_func}")
 
@@ -262,6 +330,13 @@ def discover_tests_from_files() -> list[str]:
     return nodeids
 
 class TestMetadataExtractor(ast.NodeVisitor):
+    """
+    AST visitor class to extract test metadata (decorators) from Python test files.
+    
+    This class walks through the Abstract Syntax Tree of test files to identify
+    test functions, their decorators, and class-level decorators that apply to tests.
+    """
+    
     def __init__(self, file_path: pathlib.Path):
         super().__init__()
         self.file_path = file_path
@@ -270,6 +345,7 @@ class TestMetadataExtractor(ast.NodeVisitor):
         self.current_class: list[str] = []
 
     def _extract_decorator_name(self, node: ast.AST) -> str | None:
+        """Extract the name of a decorator from an AST node."""
         if isinstance(node, ast.Call):
             node = node.func
         if isinstance(node, ast.Name):
@@ -279,7 +355,14 @@ class TestMetadataExtractor(ast.NodeVisitor):
         return None
 
     def _extract_pytest_markers(self, node: ast.AST) -> set[str]:
+        """
+        Extract pytest markers from decorator nodes.
+        
+        Handles both @pytest.mark.marker_name and direct @marker_name patterns.
+        """
         markers = set()
+        
+        # Handle @pytest.mark.marker_name patterns
         if isinstance(node, ast.Call):
             if (isinstance(node.func, ast.Attribute) and
                 isinstance(node.func.value, ast.Attribute) and
@@ -294,6 +377,7 @@ class TestMetadataExtractor(ast.NodeVisitor):
                 node.value.attr == "mark"):
                 markers.add(node.attr)
 
+        # Handle direct decorator names that are relevant for bucketing
         if isinstance(node, ast.Name):
             name = node.id
             relevant_decos = (P0_DECOS | CPU_DECOS | FRAMEWORK_DECOS |
@@ -304,37 +388,58 @@ class TestMetadataExtractor(ast.NodeVisitor):
         return markers
 
     def visit_ClassDef(self, node: ast.ClassDef):
+        """Visit class definitions to extract class-level decorators."""
         self.current_class.append(node.name)
         class_decos = set()
+        
+        # Extract decorators from the class
         for deco in node.decorator_list:
             name = self._extract_decorator_name(deco)
             if name:
                 class_decos.add(name)
             class_decos.update(self._extract_pytest_markers(deco))
+        
         self.class_decorators[node.name] = class_decos
+        
+        # Visit child nodes (methods within the class)
         for child in node.body:
             self.visit(child)
+        
         self.current_class.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
+        """Visit function definitions to extract test function decorators."""
         func_decos = set()
+        
+        # Extract decorators from the function
         for deco in node.decorator_list:
             name = self._extract_decorator_name(deco)
             if name:
                 func_decos.add(name)
             func_decos.update(self._extract_pytest_markers(deco))
 
+        # Inherit class-level decorators
         for cls in reversed(self.current_class):
             func_decos.update(self.class_decorators.get(cls, set()))
 
+        # Store metadata for test functions
         if (node.name.startswith("test") or "test" in node.name.lower() or func_decos):
             self.test_metadata[node.name] = func_decos
 
 def extract_test_metadata(file_path: pathlib.Path) -> tuple[dict[str, set[str]], bool]:
+    """
+    Extract test metadata from a Python file using both AST parsing and regex.
+    
+    Returns:
+        tuple: (test_metadata_dict, rocm_hint_bool)
+        - test_metadata_dict: Maps test names to their decorator sets
+        - rocm_hint_bool: Whether the file contains ROCm-related code
+    """
     try:
         content = file_path.read_text(encoding='utf-8', errors='replace')
         regex_markers = set()
 
+        # Use regex to catch decorators that might be missed by AST parsing
         decorator_patterns = [
             (r'@not_device_test\b', 'not_device_test'),
             (r'@pytest\.mark\.not_device_test\b', 'not_device_test'),
@@ -346,20 +451,25 @@ def extract_test_metadata(file_path: pathlib.Path) -> tuple[dict[str, set[str]],
             (r'@require_bitsandbytes\b', 'require_bitsandbytes'), (r'@require_vision\b', 'require_vision')
         ]
 
+        # Apply regex patterns to find decorators
         for pattern, marker_name in decorator_patterns:
             if re.search(pattern, content):
                 regex_markers.add(marker_name)
 
+        # Parse the file with AST to get detailed metadata
         tree = ast.parse(content)
         extractor = TestMetadataExtractor(file_path)
         extractor.visit(tree)
 
+        # Combine AST-extracted markers with regex-found markers
         for test_name, ast_markers in extractor.test_metadata.items():
             extractor.test_metadata[test_name] = ast_markers | regex_markers
 
+        # If we found file-level markers but no specific test metadata, add file-level entry
         if regex_markers and not extractor.test_metadata:
             extractor.test_metadata['__file_markers__'] = regex_markers
 
+        # Check for ROCm-related code hints
         rocm_hint = bool(re.search(r'\b(IS_ROCM_SYSTEM|torch\.version\.hip|rocm|hip_version)\b', content, re.IGNORECASE))
         return extractor.test_metadata, rocm_hint
 
@@ -369,28 +479,69 @@ def extract_test_metadata(file_path: pathlib.Path) -> tuple[dict[str, set[str]],
         return {}, False
 
 def bucket_of(decos: set[str], had_rocm_hint: bool, nodeid: str) -> str:
+    """
+    Determine which bucket a test belongs to based on its characteristics.
+    
+    Bucketing priority (first match wins):
+    1. CPU: Tests that should run on CPU only
+    2. P-1: Important model tests (high priority)
+    3. P0: Critical GPU tests or ROCm-related tests
+    4. P1: Framework basic tests
+    5. P2: Everything else (default for non-CPU tests)
+    
+    Args:
+        decos: Set of decorators found on the test
+        had_rocm_hint: Whether the test file contains ROCm-related code
+        nodeid: The full test node ID
+    
+    Returns:
+        str: Bucket name (CPU, P-1, P0, P1, P2, or P3)
+    """
+    # First check: CPU tests get their own bucket
     if is_cpu_test(decos, nodeid):
         return "CPU"
+    
+    # Second check: Important model tests go to P-1 (highest non-CPU priority)
     if is_important_model_test(nodeid):
         return "P-1"
+    
+    # Third check: ROCm-related tests go to P0
     if had_rocm_hint:
         return "P0"
+    
+    # Fourth check: GPU/accelerator-specific decorators go to P0
     if decos & P0_DECOS:
         return "P0"
+    
+    # Fifth check: Framework basics go to P1
     if decos & FRAMEWORK_DECOS:
         return "P1"
     
+    # Sixth check: Look for GPU-related keywords in the nodeid
     nodeid_lower = nodeid.lower()
     if any(pattern in nodeid_lower for pattern in [
         "deepspeed", "fsdp", "accelerate", "flash_attn", "gpu", "cuda", "multi_gpu", "bitsandbytes"
     ]):
         return "P0"
+    
+    # Default: Everything else goes to P2
     return "P2"
 
 def scan_tests() -> tuple[dict[str, list[str]], dict[str, int], dict[str, dict[str, set[str]]]]:
+    """
+    Main function to discover and bucket all tests in the repository.
+    
+    Returns:
+        tuple: (buckets_dict, decorator_stats_dict, test_metadata_map)
+        - buckets_dict: Maps bucket names to lists of test nodeids
+        - decorator_stats_dict: Maps decorator names to usage counts
+        - test_metadata_map: Maps test nodeids to their full metadata
+    """
+    # Initialize empty buckets for all categories
     buckets: dict[str, list[str]] = {"P-1": [], "P0": [], "P1": [], "P2": [], "P3": [], "CPU": []}
     test_metadata_map: dict[str, dict[str, set[str]]] = {}
 
+    # Discover all tests using pytest
     all_nodeids = discover_tests_with_pytest()
     if not all_nodeids:
         print("No tests discovered!", file=sys.stderr)
@@ -398,6 +549,7 @@ def scan_tests() -> tuple[dict[str, list[str]], dict[str, int], dict[str, dict[s
 
     print(f"Processing {len(all_nodeids)} discovered tests for bucketing with CPU separation...", file=sys.stderr)
 
+    # Group tests by their source file for efficient metadata extraction
     tests_by_file = defaultdict(list)
     for nodeid in all_nodeids:
         if "::" in nodeid:
@@ -409,82 +561,105 @@ def scan_tests() -> tuple[dict[str, list[str]], dict[str, int], dict[str, dict[s
 
     print(f"Found tests in {len(tests_by_file)} files", file=sys.stderr)
 
+    # Initialize statistics tracking
     decorator_stats = defaultdict(int)
     slow_test_buckets = {"P-1": 0, "P0": 0, "P1": 0, "P2": 0, "P3": 0, "CPU": 0}
     files_with_metadata = 0
     important_model_count = 0
     cpu_test_count = 0
 
+    # Process each file and its tests
     for file_path, nodeids_in_file in tests_by_file.items():
+        # Extract metadata from the file
         test_metadata, rocm_hint = extract_test_metadata(file_path)
         if test_metadata:
             files_with_metadata += 1
 
+        # Process each test in the file
         for nodeid in nodeids_in_file:
+            # Extract test name from nodeid
             if "::" in nodeid:
                 parts = nodeid.split("::")
                 test_name = parts[-1]
             else:
                 test_name = "__file_level__"
 
+            # Get decorators for this specific test
             decos = test_metadata.get(test_name, set())
             if not decos:
+                # Try to find matching test by partial name matching
                 for meta_test_name, meta_decos in test_metadata.items():
                     if test_name in meta_test_name or meta_test_name in test_name:
                         decos = meta_decos
                         break
+                # Fallback to file-level markers if no specific test metadata found
                 if not decos and '__file_markers__' in test_metadata:
                     decos = test_metadata['__file_markers__']
 
+            # Store complete metadata for this test
             test_metadata_map[nodeid] = {
                 'decorators': decos, 'rocm_hint': rocm_hint,
                 'file_path': str(file_path), 'test_name': test_name
             }
 
+            # Update statistics
             if is_important_model_test(nodeid):
                 important_model_count += 1
             if is_cpu_test(decos, nodeid):
                 cpu_test_count += 1
 
+            # Determine bucket and add test to appropriate bucket
             bucket = bucket_of(decos, rocm_hint, nodeid)
             buckets[bucket].append(nodeid)
 
+            # Update decorator usage statistics
             for deco in decos:
                 decorator_stats[deco] += 1
             if decos & SLOW_DECOS:
                 slow_test_buckets[bucket] += 1
 
+    # Print summary statistics
     total_tests = sum(len(tests) for tests in buckets.values())
     print(f"Bucketed {total_tests} tests from {files_with_metadata} files with metadata", file=sys.stderr)
     print(f"Found {important_model_count} important model tests for P-1", file=sys.stderr)
     print(f"Found {cpu_test_count} CPU tests for CPU bucket", file=sys.stderr)
 
+    # Sort test lists within each bucket for consistent output
     for lst in buckets.values():
         lst.sort()
 
     return buckets, dict(decorator_stats), test_metadata_map
 
 def analyze_bucket_distribution(buckets: dict[str, list[str]], decorator_stats: dict[str, int] = None, test_metadata_map=None) -> None:
+    """
+    Print detailed analysis of test distribution across buckets.
+    
+    This function provides insights into how tests are distributed and helps
+    validate the bucketing strategy.
+    """
     total_tests = sum(len(tests) for tests in buckets.values())
 
     print("\n=== Bucket Distribution Analysis (with CPU separation) ===", file=sys.stderr)
+    
+    # Define bucket descriptions for clear understanding
+    bucket_descriptions = {
+        "P-1": "Important Models (auto, bert, clip, t5, etc.) - NON-CPU ONLY",
+        "P0": "Critical GPU (DeepSpeed, Flash Attention, Quantization, Multi-GPU) - NON-CPU ONLY",
+        "P1": "Framework Basics (torch/tf/flax, tokenizers, vision, data handling) - NON-CPU ONLY",
+        "P2": "Remaining Non-CPU Tests - NON-CPU ONLY",
+        "P3": "Uncategorized Non-CPU Tests - NON-CPU ONLY",
+        "CPU": "ALL CPU-only tests (not_device_test, flaky, pipelines, audio, etc.)"
+    }
+    
+    # Print detailed bucket statistics
     for bucket in ["P-1", "P0", "P1", "P2", "P3", "CPU"]:
         count = len(buckets[bucket])
         percentage = (count / total_tests * 100) if total_tests > 0 else 0
-
-        bucket_desc = {
-            "P-1": "Important Models (auto, bert, clip, t5, etc.) - NON-CPU ONLY",
-            "P0": "Critical GPU (DeepSpeed, Flash Attention, Quantization, Multi-GPU) - NON-CPU ONLY",
-            "P1": "Framework Basics (torch/tf/flax, tokenizers, vision, data handling) - NON-CPU ONLY",
-            "P2": "Remaining Non-CPU Tests - NON-CPU ONLY",
-            "P3": "Uncategorized Non-CPU Tests - NON-CPU ONLY",
-            "CPU": "ALL CPU-only tests (not_device_test, flaky, pipelines, audio, etc.)"
-        }
-
-        print(f"{bucket}: {count:4d} tests ({percentage:5.1f}%) - {bucket_desc[bucket]}", file=sys.stderr)
+        print(f"{bucket}: {count:4d} tests ({percentage:5.1f}%) - {bucket_descriptions[bucket]}", file=sys.stderr)
 
     print(f"Total: {total_tests} tests", file=sys.stderr)
 
+    # Show sample tests from CPU bucket
     if buckets["CPU"]:
         print(f"\nSample CPU tests:", file=sys.stderr)
         for i, nodeid in enumerate(buckets["CPU"][:5]):
@@ -492,6 +667,7 @@ def analyze_bucket_distribution(buckets: dict[str, list[str]], decorator_stats: 
         if len(buckets["CPU"]) > 5:
             print(f"   ... and {len(buckets['CPU']) - 5} more", file=sys.stderr)
 
+    # Show sample tests from P-1 bucket
     if buckets["P-1"]:
         print(f"\nSample P-1 (Important Model) tests:", file=sys.stderr)
         for i, nodeid in enumerate(buckets["P-1"][:5]):
@@ -499,6 +675,7 @@ def analyze_bucket_distribution(buckets: dict[str, list[str]], decorator_stats: 
         if len(buckets["P-1"]) > 5:
             print(f"   ... and {len(buckets['P-1']) - 5} more", file=sys.stderr)
 
+    # Print high-level CPU vs Non-CPU analysis
     if decorator_stats:
         cpu_count = len(buckets["CPU"])
         non_cpu_total = sum(len(buckets[b]) for b in ["P-1", "P0", "P1", "P2", "P3"])
@@ -559,6 +736,16 @@ def parse_ci_results(ci_file: pathlib.Path) -> dict[str, dict[str, int]]:
 
 def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[str, dict[str, set[str]]], 
                        output_path: str, ci_results: dict = None) -> None:
+    """
+    Create comprehensive Excel export with multiple sheets for analysis.
+    
+    This function creates detailed Excel reports with:
+    - Summary sheet with bucket distributions
+    - Individual sheets for each bucket
+    - Decorator analysis
+    - CPU test analysis
+    - CI results integration (if available)
+    """
     try:
         import pandas as pd
         import openpyxl
@@ -571,24 +758,30 @@ def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[s
 
     print(f"Creating Excel export with CPU separation: {output_path}", file=sys.stderr)
 
+    # Create new workbook and remove default sheet
     wb = openpyxl.Workbook()
     if 'Sheet' in wb.sheetnames:
         wb.remove(wb['Sheet'])
 
+    # Create summary sheet
     _create_summary_sheet(wb, buckets, ci_results or {})
 
+    # Create individual bucket sheets
     for bucket in ["P-1", "P0", "P1", "P2", "P3", "CPU"]:
         if not buckets[bucket]:
             continue
         print(f"Creating sheet for bucket {bucket} ({len(buckets[bucket])} tests)", file=sys.stderr)
         _create_bucket_sheet(wb, bucket, buckets[bucket], test_metadata_map, ci_results or {})
 
+    # Create analysis sheets
     _create_decorator_analysis_sheet(wb, test_metadata_map)
     _create_cpu_analysis_sheet(wb, buckets, test_metadata_map)
 
+    # Create CI results sheet if data is available
     if ci_results:
         _create_ci_results_sheet(wb, ci_results)
 
+    # Save the workbook
     try:
         wb.save(output_path)
         print(f"✅ Excel file saved: {output_path}", file=sys.stderr)
@@ -597,6 +790,7 @@ def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[s
         print(f"Error saving Excel file: {e}", file=sys.stderr)
 
 def _create_summary_sheet(wb, buckets: dict[str, list[str]], ci_results: dict) -> None:
+    """Create the summary sheet with bucket distribution overview."""
     import pandas as pd
     from openpyxl.styles import Font, PatternFill
 
@@ -626,6 +820,7 @@ def _create_summary_sheet(wb, buckets: dict[str, list[str]], ci_results: dict) -
     for r in dataframe_to_rows(df, index=False, header=True):
         ws.append(r)
 
+    # Style the header row
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
     for cell in ws[1]:
@@ -633,11 +828,13 @@ def _create_summary_sheet(wb, buckets: dict[str, list[str]], ci_results: dict) -
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center", vertical="center")
 
+    # Auto-adjust column widths
     for column in ws.columns:
         max_length = max(len(str(cell.value)) for cell in column)
         ws.column_dimensions[column[0].column_letter].width = min(max_length + 2, 50)
 
 def _create_bucket_sheet(wb, bucket: str, test_nodeids: list[str], test_metadata_map: dict, ci_results: dict) -> None:
+    """Create detailed sheet for a specific bucket."""
     import pandas as pd
     ws = wb.create_sheet(f"Bucket_{bucket}")
 
@@ -646,11 +843,13 @@ def _create_bucket_sheet(wb, bucket: str, test_nodeids: list[str], test_metadata
         metadata = test_metadata_map.get(nodeid, {})
         decorators = metadata.get('decorators', set())
 
+        # Parse nodeid components
         parts = nodeid.split("::")
         file_path = parts[0] if len(parts) > 0 else ""
         test_class = parts[1] if len(parts) > 1 else ""
         test_method = parts[2] if len(parts) > 2 else parts[-1]
 
+        # Categorize decorators for better analysis
         gpu_decorators = [d for d in decorators if d in P0_DECOS]
         framework_decorators = [d for d in decorators if d in FRAMEWORK_DECOS]
         cpu_decorators = [d for d in decorators if d in CPU_DECOS]
@@ -675,12 +874,14 @@ def _create_bucket_sheet(wb, bucket: str, test_nodeids: list[str], test_metadata
         ws.append(r)
 
 def _create_decorator_analysis_sheet(wb, test_metadata_map: dict) -> None:
+    """Create sheet analyzing decorator usage patterns."""
     import pandas as pd
     ws = wb.create_sheet("Decorator_Analysis")
 
     decorator_counts = defaultdict(int)
     decorator_buckets = defaultdict(lambda: defaultdict(int))
 
+    # Analyze decorator usage across all tests
     for nodeid, metadata in test_metadata_map.items():
         decorators = metadata.get('decorators', set())
         bucket = bucket_of(decorators, metadata.get('rocm_hint', False), nodeid)
@@ -693,6 +894,7 @@ def _create_decorator_analysis_sheet(wb, test_metadata_map: dict) -> None:
     for decorator, total_count in sorted(decorator_counts.items(), key=lambda x: x[1], reverse=True):
         bucket_usage = decorator_buckets[decorator]
 
+        # Categorize decorators
         category = "Other"
         if decorator in P0_DECOS:
             category = "GPU/Critical"
@@ -714,6 +916,7 @@ def _create_decorator_analysis_sheet(wb, test_metadata_map: dict) -> None:
         ws.append(r)
 
 def _create_cpu_analysis_sheet(wb, buckets: dict[str, list[str]], test_metadata_map: dict) -> None:
+    """Create sheet with detailed CPU vs Non-CPU analysis."""
     import pandas as pd
     ws = wb.create_sheet("CPU_Analysis")
 
@@ -736,6 +939,7 @@ def _create_cpu_analysis_sheet(wb, buckets: dict[str, list[str]], test_metadata_
          'Description': 'All tests combined'}
     ]
 
+    # Add breakdown by non-CPU buckets
     for bucket in non_cpu_buckets:
         count = len(buckets[bucket])
         cpu_analysis_data.append({
@@ -749,6 +953,7 @@ def _create_cpu_analysis_sheet(wb, buckets: dict[str, list[str]], test_metadata_
         ws.append(r)
 
 def _create_ci_results_sheet(wb, ci_results: dict) -> None:
+    """Create sheet with CI results analysis."""
     import pandas as pd
     ws = wb.create_sheet("CI_Results")
 
@@ -772,6 +977,7 @@ def _create_ci_results_sheet(wb, ci_results: dict) -> None:
         ws.append(r)
 
 def safe_print(text: str) -> bool:
+    """Safely print text, handling broken pipe errors."""
     try:
         print(text)
         return True
@@ -779,6 +985,7 @@ def safe_print(text: str) -> bool:
         return False
 
 def main() -> None:
+    """Main entry point for the test bucketing utility."""
     ap = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
     g = ap.add_argument
     
@@ -800,6 +1007,7 @@ def main() -> None:
     print("=== Scanning and analyzing test distribution with CPU separation ===", file=sys.stderr)
     buckets, decorator_stats, test_metadata_map = scan_tests()
 
+    # Parse CI results if provided
     ci_results = {}
     if args.analyze_ci:
         ci_file = pathlib.Path(args.analyze_ci)
@@ -808,17 +1016,20 @@ def main() -> None:
         else:
             print(f"CI results file not found: {ci_file}", file=sys.stderr)
 
+    # Print analysis if requested or no other output format specified
     if args.print or not (args.export_excel or args.analyze_ci):
         analyze_bucket_distribution(buckets, decorator_stats, test_metadata_map)
 
-    # Discovery mode
+    # Discovery mode - output specific bucket or all buckets
     if not args.export_excel and not args.analyze_ci:
         if args.bucket:
+            # Output only the specified bucket's tests
             for n in buckets[args.bucket]:
                 if not safe_print(n):
                     sys.exit(0)
             return
         if args.print:
+            # Print all buckets with headers
             for b in ("P-1", "P0", "P1", "P2", "P3", "CPU"):
                 if not safe_print(f"\n=== {b} ({len(buckets[b])} tests) ==="):
                     sys.exit(0)
@@ -826,6 +1037,7 @@ def main() -> None:
                     if not safe_print(n):
                         sys.exit(0)
         else:
+            # Save to YAML file
             try:
                 with open(args.yaml, "w") as f:
                     json.dump(buckets, f, indent=2)
@@ -835,7 +1047,7 @@ def main() -> None:
                 sys.exit(1)
         return
 
-    # Excel export
+    # Excel export mode
     if args.export_excel:
         create_excel_export(buckets, test_metadata_map, args.export_excel, ci_results)
 
