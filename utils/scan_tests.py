@@ -1161,7 +1161,7 @@ def main() -> None:
     # CI results analysis
     g("--analyze-ci", metavar="CI_FILE", nargs="+", 
       help="Analyze one or more CI results files for multi-GPU comparison. " +
-           "Each file should start with JSON metadata: {\"gpu_name\": \"h100\", \"commit_hash\": \"abc123\", ...}")}
+           "Each file should start with JSON metadata: {\"gpu_name\": \"h100\", \"commit_hash\": \"abc123\", ...}")
     
     g("--debug", action="store_true", help="Show detailed debug information")
     args = ap.parse_args()
