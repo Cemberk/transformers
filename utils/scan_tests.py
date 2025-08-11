@@ -28,6 +28,9 @@ PASSED test_path::TestClass::test_method
 FAILED test_path::TestClass::test_method
 ...
 
+Usage: 
+python3 scan_tests.py --analyze-ci collated_reports_MI325_4d57c39.txt collated_reports_h100_4d57c39.txt collated_reports_MI355_4d57c39.txt --export-excel multi_gpu_report.xlsx --debug
+
 Key fixes in this version:
 - Correctly parses CI files into *per-test* (nodeid) status maps (individual_tests), so coverage is non-zero.
 - Normalizes CI status keys to UPPERCASE and computes TOTAL per section.
