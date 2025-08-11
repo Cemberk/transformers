@@ -1,8 +1,32 @@
 #!/usr/bin/env python3
 """
-AMD frameworks-CI utility - Test Bucketing and Analysis (fixed)
-==============================================================
+AMD frameworks-CI utility - Test Bucketing and Analysis
+======================================================
 Bucket HuggingFace Transformers tests into P-1/P0/P1/P2/P3/CPU classes and analyze results.
+
+Bucketing Strategy:
+• P-1: Important model tests - critical models (auto, bert, clip, t5, etc.) (NON-CPU ONLY)
+• P0: Critical GPU tests - heavily used GPU kernels (NON-CPU ONLY)
+• P1: Framework basics - torch/tf/flax without device specificity (NON-CPU ONLY)
+• P2: CPU-only/Flaky tests - not_device_test, pipelines, flaky tests (NON-CPU ONLY)
+• P3: Everything else not captured above (NON-CPU ONLY)
+• CPU: All CPU-only tests (explicit CPU tests, not_device_test, etc.)
+
+Key CLI modes:
+• Discovery only: python bucket_tests.py [--bucket P-1|P0|P1|P2|P3|CPU] [--yaml buckets.yaml] [--print]
+• Export to Excel: python bucket_tests.py --export-excel results.xlsx
+• Analyze CI results: python bucket_tests.py --analyze-ci results.txt --export-excel full_report.xlsx
+• Multi-GPU analysis: python bucket_tests.py --analyze-ci file1.txt file2.txt file3.txt --export-excel multi_gpu_report.xlsx
+
+Multi-GPU CI File Format:
+Each CI results file should start with a JSON metadata line:
+{"gpu_name": "h100", "commit_hash": "4d57c39", "total_status_count": {"passed": 24879, "failed": 1114, "skipped": 25752}}
+
+Followed by test results grouped by model:
+model_name
+PASSED test_path::TestClass::test_method
+FAILED test_path::TestClass::test_method
+...
 
 Key fixes in this version:
 - Correctly parses CI files into *per-test* (nodeid) status maps (individual_tests), so coverage is non-zero.
@@ -11,7 +35,6 @@ Key fixes in this version:
 - Restores and cleans up `analyze_bucket_distribution` (separate from coverage).
 - Fixes Excel export imports (Alignment, dataframe_to_rows) inside helper functions to avoid NameError.
 
-Usage (unchanged): see docstring of original script.
 """
 
 from __future__ import annotations
