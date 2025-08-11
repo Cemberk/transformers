@@ -16,6 +16,17 @@ Key CLI modes:
 • Discovery only: python bucket_tests.py [--bucket P-1|P0|P1|P2|P3|CPU] [--yaml buckets.yaml] [--print]
 • Export to Excel: python bucket_tests.py --export-excel results.xlsx
 • Analyze CI results: python bucket_tests.py --analyze-ci results.txt --export-excel full_report.xlsx
+• Multi-GPU analysis: python bucket_tests.py --analyze-ci file1.txt file2.txt file3.txt --export-excel multi_gpu_report.xlsx
+
+Multi-GPU CI File Format:
+Each CI results file should start with a JSON metadata line:
+{"gpu_name": "h100", "commit_hash": "4d57c39", "total_status_count": {"passed": 24879, "failed": 1114, "skipped": 25752}}
+
+Followed by test results grouped by model:
+model_name
+PASSED test_path::TestClass::test_method
+FAILED test_path::TestClass::test_method
+...
 """
 
 from __future__ import annotations
@@ -123,7 +134,7 @@ def is_excluded(path: pathlib.Path) -> bool:
 
 def is_not_device_test(nodeid: str) -> bool:
     """
-    Check if a test is a CPU-only test based on the transformers NOT_DEVICE_TESTS list.
+    Check if a test is a CPU-only test based on the transformer team's NOT_DEVICE_TESTS list.
     This function checks if any of the test name patterns from NOT_DEVICE_TESTS are present in the nodeid.
     """
     return any(test_name in nodeid for test_name in NOT_DEVICE_TESTS)
@@ -134,7 +145,7 @@ def is_cpu_test(decos: set[str], nodeid: str, file_path: pathlib.Path = None) ->
     
     Uses multiple strategies:
     1. Decorator-based detection (CPU_DECOS)
-    2. Transformers NOT_DEVICE_TESTS patterns
+    2. Transformer team's NOT_DEVICE_TESTS patterns
     3. Path pattern matching
     4. Pipeline and slow test detection
     """
@@ -142,7 +153,7 @@ def is_cpu_test(decos: set[str], nodeid: str, file_path: pathlib.Path = None) ->
     if decos & CPU_DECOS:
         return True
     
-    # Use transformers CPU test identification
+    # Use transformer team's official CPU test identification
     if is_not_device_test(nodeid):
         return True
     
@@ -684,45 +695,63 @@ def analyze_bucket_distribution(buckets: dict[str, list[str]], decorator_stats: 
         print(f"   - CPU (All CPU-only): {cpu_count} tests ({cpu_count/total_tests*100:.1f}%)", file=sys.stderr)
         print(f"   - Non-CPU Total: {non_cpu_total} tests ({non_cpu_total/total_tests*100:.1f}%)", file=sys.stderr)
 
-def parse_ci_results(ci_file: pathlib.Path) -> dict[str, dict[str, int]]:
-    """Parse CI results file and extract test outcomes by model/bucket."""
+def parse_ci_results(ci_file: pathlib.Path) -> tuple[dict[str, dict[str, int]], dict[str, str]]:
+    """
+    Parse CI results file and extract test outcomes by model/bucket along with metadata.
+    
+    Returns:
+        tuple: (results_dict, metadata_dict)
+        - results_dict: Maps model names to their test results
+        - metadata_dict: Contains GPU name, commit hash, and overall stats
+    """
     print(f"Parsing CI results from {ci_file}", file=sys.stderr)
     
     try:
         content = ci_file.read_text(encoding='utf-8', errors='replace')
     except Exception as e:
         print(f"Error reading CI results file: {e}", file=sys.stderr)
-        return {}
+        return {}, {}
 
     results = {}
+    metadata = {"gpu_name": "unknown", "commit_hash": "unknown", "file_name": ci_file.name}
     current_model = None
-    model_results = {"PASSED": 0, "FAILED": 0, "SKIPPED": 0}
+    model_results = {"PASSED": 0, "FAILED": 0, "SKIPPED": 0, "ERROR": 0}
+    lines = content.splitlines()
 
-    for line in content.splitlines():
+    # Parse the first line for metadata (JSON format)
+    if lines and lines[0].startswith("{"):
+        try:
+            first_line_data = json.loads(lines[0])
+            if isinstance(first_line_data, dict):
+                metadata.update({
+                    "gpu_name": first_line_data.get("gpu_name", "unknown"),
+                    "commit_hash": first_line_data.get("commit_hash", "unknown"),
+                    "total_status_count": first_line_data.get("total_status_count", {})
+                })
+                results["OVERALL"] = first_line_data.get("total_status_count", {})
+        except json.JSONDecodeError:
+            print(f"Warning: Could not parse metadata from first line of {ci_file}", file=sys.stderr)
+
+    # Parse the rest of the file
+    for line in lines[1:]:  # Skip the first metadata line
         line = line.strip()
+        if not line:
+            continue
         
-        # Check for summary line like {'PASSED': 27453, 'FAILED': 445, 'SKIPPED': 21588, 'TOTAL': 49486}
-        if line.startswith("{") and "PASSED" in line:
-            try:
-                summary = eval(line)
-                if isinstance(summary, dict) and "PASSED" in summary:
-                    results["OVERALL"] = summary
-                    continue
-            except:
-                pass
-
         # Check for model name (single word lines that aren't test results)
         if (line and not line.startswith("PASSED") and not line.startswith("FAILED") and 
-            not line.startswith("SKIPPED") and "::" not in line and 
+            not line.startswith("SKIPPED") and not line.startswith("ERROR") and "::" not in line and 
             line.replace("_", "").replace("-", "").isalnum()):
+            # Save previous model results
             if current_model and any(model_results.values()):
                 results[current_model] = model_results.copy()
+            # Start new model
             current_model = line
-            model_results = {"PASSED": 0, "FAILED": 0, "SKIPPED": 0}
+            model_results = {"PASSED": 0, "FAILED": 0, "SKIPPED": 0, "ERROR": 0}
             continue
 
         # Check for test result lines
-        if line.startswith(("PASSED ", "FAILED ", "SKIPPED ")):
+        if line.startswith(("PASSED ", "FAILED ", "SKIPPED ", "ERROR ")):
             status = line.split()[0]
             if current_model and status in model_results:
                 model_results[status] += 1
@@ -731,8 +760,39 @@ def parse_ci_results(ci_file: pathlib.Path) -> dict[str, dict[str, int]]:
     if current_model and any(model_results.values()):
         results[current_model] = model_results.copy()
 
-    print(f"Parsed results for {len(results)} models/sections", file=sys.stderr)
-    return results
+    print(f"Parsed results for {len(results)} models/sections from GPU: {metadata['gpu_name']}", file=sys.stderr)
+    return results, metadata
+
+
+def parse_multiple_ci_results(ci_files: list[pathlib.Path]) -> dict[str, dict[str, dict[str, int]]]:
+    """
+    Parse multiple CI results files and organize by GPU type.
+    
+    Args:
+        ci_files: List of CI result file paths
+    
+    Returns:
+        dict: Maps GPU names to their CI results
+        Format: {gpu_name: {model_name: {status: count}}}
+    """
+    all_gpu_results = {}
+    
+    for ci_file in ci_files:
+        if not ci_file.exists():
+            print(f"CI results file not found: {ci_file}", file=sys.stderr)
+            continue
+            
+        results, metadata = parse_ci_results(ci_file)
+        gpu_name = metadata.get("gpu_name", "unknown")
+        
+        # Store results with GPU context
+        all_gpu_results[gpu_name] = {
+            "results": results,
+            "metadata": metadata
+        }
+    
+    print(f"Parsed CI results from {len(all_gpu_results)} GPU types: {list(all_gpu_results.keys())}", file=sys.stderr)
+    return all_gpu_results
 
 def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[str, dict[str, set[str]]], 
                        output_path: str, ci_results: dict = None) -> None:
@@ -744,7 +804,13 @@ def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[s
     - Individual sheets for each bucket
     - Decorator analysis
     - CPU test analysis
-    - CI results integration (if available)
+    - Multi-GPU CI results integration (if available)
+    
+    Args:
+        buckets: Test buckets organized by priority
+        test_metadata_map: Metadata for all tests
+        output_path: Path to save Excel file
+        ci_results: Multi-GPU CI results in format {gpu_name: {results: {...}, metadata: {...}}}
     """
     try:
         import pandas as pd
@@ -757,6 +823,9 @@ def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[s
         return
 
     print(f"Creating Excel export with CPU separation: {output_path}", file=sys.stderr)
+    if ci_results:
+        gpu_names = list(ci_results.keys())
+        print(f"Including CI results from GPUs: {gpu_names}", file=sys.stderr)
 
     # Create new workbook and remove default sheet
     wb = openpyxl.Workbook()
@@ -777,9 +846,10 @@ def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[s
     _create_decorator_analysis_sheet(wb, test_metadata_map)
     _create_cpu_analysis_sheet(wb, buckets, test_metadata_map)
 
-    # Create CI results sheet if data is available
+    # Create CI results sheets if data is available
     if ci_results:
-        _create_ci_results_sheet(wb, ci_results)
+        _create_multi_gpu_ci_results_sheet(wb, ci_results)
+        _create_gpu_comparison_sheet(wb, ci_results)
 
     # Save the workbook
     try:
@@ -790,7 +860,7 @@ def create_excel_export(buckets: dict[str, list[str]], test_metadata_map: dict[s
         print(f"Error saving Excel file: {e}", file=sys.stderr)
 
 def _create_summary_sheet(wb, buckets: dict[str, list[str]], ci_results: dict) -> None:
-    """Create the summary sheet with bucket distribution overview."""
+    """Create the summary sheet with bucket distribution overview and CI summary."""
     import pandas as pd
     from openpyxl.styles import Font, PatternFill
 
@@ -811,14 +881,40 @@ def _create_summary_sheet(wb, buckets: dict[str, list[str]], ci_results: dict) -
             "CPU": "ALL CPU-only tests (not_device_test, flaky, pipelines, etc.)"
         }
 
+        # Determine CI status
+        ci_status = "Not Available"
+        if ci_results:
+            gpu_names = list(ci_results.keys())
+            ci_status = f"Available ({len(gpu_names)} GPUs: {', '.join(gpu_names)})"
+
         summary_data.append({
             'Bucket': bucket, 'Description': bucket_desc[bucket], 'Test Count': count,
-            'Percentage': f"{percentage:.1f}%", 'CI Status': 'Available' if ci_results else 'Not Available'
+            'Percentage': f"{percentage:.1f}%", 'CI Status': ci_status
         })
 
     df = pd.DataFrame(summary_data)
     for r in dataframe_to_rows(df, index=False, header=True):
         ws.append(r)
+
+    # Add CI summary if available
+    if ci_results:
+        ws.append([])  # Empty row
+        ws.append(["GPU Comparison Summary"])
+        ws.append(["GPU Name", "Commit Hash", "Total Tests", "Passed", "Failed", "Skipped", "Error", "Success Rate"])
+        
+        for gpu_name, gpu_data in ci_results.items():
+            metadata = gpu_data.get("metadata", {})
+            overall_stats = gpu_data.get("results", {}).get("OVERALL", {})
+            
+            commit_hash = metadata.get("commit_hash", "unknown")
+            total = overall_stats.get("total", sum(overall_stats.values()) if overall_stats else 0)
+            passed = overall_stats.get("passed", 0)
+            failed = overall_stats.get("failed", 0)
+            skipped = overall_stats.get("skipped", 0)
+            error = overall_stats.get("error", 0)
+            success_rate = (passed / total * 100) if total > 0 else 0
+            
+            ws.append([gpu_name, commit_hash, total, passed, failed, skipped, error, f"{success_rate:.1f}%"])
 
     # Style the header row
     header_font = Font(bold=True, color="FFFFFF")
@@ -834,7 +930,7 @@ def _create_summary_sheet(wb, buckets: dict[str, list[str]], ci_results: dict) -
         ws.column_dimensions[column[0].column_letter].width = min(max_length + 2, 50)
 
 def _create_bucket_sheet(wb, bucket: str, test_nodeids: list[str], test_metadata_map: dict, ci_results: dict) -> None:
-    """Create detailed sheet for a specific bucket."""
+    """Create detailed sheet for a specific bucket with multi-GPU CI integration."""
     import pandas as pd
     ws = wb.create_sheet(f"Bucket_{bucket}")
 
@@ -855,7 +951,8 @@ def _create_bucket_sheet(wb, bucket: str, test_nodeids: list[str], test_metadata
         cpu_decorators = [d for d in decorators if d in CPU_DECOS]
         other_decorators = [d for d in decorators if d not in (P0_DECOS | FRAMEWORK_DECOS | CPU_DECOS)]
 
-        test_data.append({
+        # Base test data
+        test_row = {
             'Test NodeID': nodeid, 'File Path': file_path, 'Test Class': test_class,
             'Test Method': test_method, 'Bucket': bucket,
             'Is CPU Test': 'Yes' if is_cpu_test(decorators, nodeid) else 'No',
@@ -867,7 +964,16 @@ def _create_bucket_sheet(wb, bucket: str, test_nodeids: list[str], test_metadata
             'Other Decorators': ', '.join(sorted(other_decorators)),
             'All Decorators': ', '.join(sorted(decorators)),
             'Decorator Count': len(decorators)
-        })
+        }
+
+        # Add CI results for each GPU if available
+        if ci_results:
+            for gpu_name in ci_results.keys():
+                test_row[f'{gpu_name}_Status'] = 'Not Found'  # Default value
+                # Note: Detailed test-level CI mapping would require more complex parsing
+                # This is a placeholder for future enhancement
+
+        test_data.append(test_row)
 
     df = pd.DataFrame(test_data)
     for r in dataframe_to_rows(df, index=False, header=True):
@@ -952,27 +1058,84 @@ def _create_cpu_analysis_sheet(wb, buckets: dict[str, list[str]], test_metadata_
     for r in dataframe_to_rows(df, index=False, header=True):
         ws.append(r)
 
-def _create_ci_results_sheet(wb, ci_results: dict) -> None:
-    """Create sheet with CI results analysis."""
+def _create_multi_gpu_ci_results_sheet(wb, ci_results: dict) -> None:
+    """Create sheet with detailed CI results for all GPU types."""
     import pandas as pd
-    ws = wb.create_sheet("CI_Results")
+    ws = wb.create_sheet("Multi_GPU_CI_Results")
 
     results_data = []
-    for model_or_section, stats in ci_results.items():
-        if isinstance(stats, dict):
-            total = stats.get('TOTAL', sum(stats.values()) if 'TOTAL' not in stats else stats['TOTAL'])
-            passed = stats.get('PASSED', 0)
-            failed = stats.get('FAILED', 0)
-            skipped = stats.get('SKIPPED', 0)
-            
-            success_rate = (passed / total * 100) if total > 0 else 0
-            
-            results_data.append({
-                'Model/Section': model_or_section, 'Total': total, 'Passed': passed,
-                'Failed': failed, 'Skipped': skipped, 'Success Rate (%)': f"{success_rate:.1f}"
-            })
+    for gpu_name, gpu_data in ci_results.items():
+        gpu_results = gpu_data.get("results", {})
+        metadata = gpu_data.get("metadata", {})
+        commit_hash = metadata.get("commit_hash", "unknown")
+        
+        for model_or_section, stats in gpu_results.items():
+            if isinstance(stats, dict) and model_or_section != "OVERALL":
+                total = stats.get("TOTAL", sum(v for k, v in stats.items() if k != "TOTAL"))
+                passed = stats.get("PASSED", 0)
+                failed = stats.get("FAILED", 0)
+                skipped = stats.get("SKIPPED", 0)
+                error = stats.get("ERROR", 0)
+                
+                success_rate = (passed / total * 100) if total > 0 else 0
+                
+                results_data.append({
+                    'GPU Type': gpu_name,
+                    'Commit Hash': commit_hash,
+                    'Model/Section': model_or_section,
+                    'Total Tests': total,
+                    'Passed': passed,
+                    'Failed': failed,
+                    'Skipped': skipped,
+                    'Error': error,
+                    'Success Rate (%)': f"{success_rate:.1f}",
+                    'Failure Rate (%)': f"{(failed/total*100) if total > 0 else 0:.1f}"
+                })
 
     df = pd.DataFrame(results_data)
+    for r in dataframe_to_rows(df, index=False, header=True):
+        ws.append(r)
+
+
+def _create_gpu_comparison_sheet(wb, ci_results: dict) -> None:
+    """Create sheet comparing performance across different GPU types."""
+    import pandas as pd
+    ws = wb.create_sheet("GPU_Comparison")
+
+    # Get all models that appear in any GPU's results
+    all_models = set()
+    for gpu_data in ci_results.values():
+        gpu_results = gpu_data.get("results", {})
+        all_models.update(model for model in gpu_results.keys() if model != "OVERALL")
+
+    comparison_data = []
+    for model in sorted(all_models):
+        row_data = {"Model": model}
+        
+        # Add data for each GPU
+        for gpu_name, gpu_data in ci_results.items():
+            gpu_results = gpu_data.get("results", {})
+            model_stats = gpu_results.get(model, {})
+            
+            if model_stats:
+                total = model_stats.get("TOTAL", sum(v for k, v in model_stats.items() if k != "TOTAL"))
+                passed = model_stats.get("PASSED", 0)
+                failed = model_stats.get("FAILED", 0)
+                success_rate = (passed / total * 100) if total > 0 else 0
+                
+                row_data[f"{gpu_name}_Total"] = total
+                row_data[f"{gpu_name}_Passed"] = passed
+                row_data[f"{gpu_name}_Failed"] = failed
+                row_data[f"{gpu_name}_Success_Rate"] = f"{success_rate:.1f}%"
+            else:
+                row_data[f"{gpu_name}_Total"] = 0
+                row_data[f"{gpu_name}_Passed"] = 0
+                row_data[f"{gpu_name}_Failed"] = 0
+                row_data[f"{gpu_name}_Success_Rate"] = "N/A"
+        
+        comparison_data.append(row_data)
+
+    df = pd.DataFrame(comparison_data)
     for r in dataframe_to_rows(df, index=False, header=True):
         ws.append(r)
 
@@ -996,7 +1159,9 @@ def main() -> None:
     g("--export-excel", metavar="FILE.xlsx", help="Export test data to Excel file")
     
     # CI results analysis
-    g("--analyze-ci", metavar="CI_FILE", help="Analyze CI results file and integrate with buckets")
+    g("--analyze-ci", metavar="CI_FILE", nargs="+", 
+      help="Analyze one or more CI results files for multi-GPU comparison. " +
+           "Each file should start with JSON metadata: {\"gpu_name\": \"h100\", \"commit_hash\": \"abc123\", ...}")}
     
     g("--debug", action="store_true", help="Show detailed debug information")
     args = ap.parse_args()
@@ -1007,14 +1172,14 @@ def main() -> None:
     print("=== Scanning and analyzing test distribution with CPU separation ===", file=sys.stderr)
     buckets, decorator_stats, test_metadata_map = scan_tests()
 
-    # Parse CI results if provided
+    # Parse CI results if provided (supports multiple files for multi-GPU analysis)
     ci_results = {}
     if args.analyze_ci:
-        ci_file = pathlib.Path(args.analyze_ci)
-        if ci_file.exists():
-            ci_results = parse_ci_results(ci_file)
-        else:
-            print(f"CI results file not found: {ci_file}", file=sys.stderr)
+        ci_file_paths = [pathlib.Path(f) for f in args.analyze_ci]
+        print(f"Multi-GPU CI analysis mode: processing {len(ci_file_paths)} files", file=sys.stderr)
+        for i, path in enumerate(ci_file_paths):
+            print(f"  {i+1}. {path}", file=sys.stderr)
+        ci_results = parse_multiple_ci_results(ci_file_paths)
 
     # Print analysis if requested or no other output format specified
     if args.print or not (args.export_excel or args.analyze_ci):
