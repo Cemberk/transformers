@@ -38,7 +38,10 @@ import subprocess
 import tempfile
 
 # Import important models and CPU test identifiers from external modules
-from utils.test_fetcher import IMPORTANT_MODELS
+#from utils.test_fetcher import IMPORTANT_MODELS
+import sys
+sys.path.append(".")
+from test_fetcher import IMPORTANT_MODELS
 from conftest import NOT_DEVICE_TESTS
 
 # Path constants - adjusted for utils folder
