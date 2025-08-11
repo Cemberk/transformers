@@ -36,13 +36,11 @@ from enum import Enum
 from typing import Any, Dict, List, Tuple, Set
 import subprocess
 import tempfile
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 # Import important models and CPU test identifiers from external modules
-#from utils.test_fetcher import IMPORTANT_MODELS
-import sys
-sys.path.append(".")
-from test_fetcher import IMPORTANT_MODELS
-from conftest import NOT_DEVICE_TESTS
+from transformers.utils.test_fetcher import IMPORTANT_MODELS
+from transformers.conftest import NOT_DEVICE_TESTS
 
 # Path constants - adjusted for utils folder
 SCRIPT_PATH = pathlib.Path(__file__).resolve()
