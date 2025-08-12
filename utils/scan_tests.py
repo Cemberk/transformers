@@ -686,93 +686,87 @@ def analyze_bucket_distribution(
 # ------------------------------
 
 def _normalize_status_key(k: str) -> str:
+    """Normalize status keys to uppercase, handling 'null' as 'NULL'"""
     return k.strip().upper()
-
 
 def parse_ci_results(ci_file: pathlib.Path) -> tuple[dict[str, dict[str, int]], dict[str, str], dict[str, str]]:
     """
+    Parse JSON CI results file instead of text format.
     Returns (results_by_model, metadata, individual_tests)
     - results_by_model includes an "OVERALL" section with UPPERCASE keys and TOTAL.
     - individual_tests maps exact nodeid -> status (UPPERCASE).
     """
-    print(f"Parsing CI results from {ci_file}", file=sys.stderr)
+    print(f"Parsing JSON CI results from {ci_file}", file=sys.stderr)
     try:
         content = ci_file.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
         print(f"Error reading CI results file: {e}", file=sys.stderr)
         return {}, {}, {}
 
+    try:
+        # Parse the entire file as JSON
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON from {ci_file}: {e}", file=sys.stderr)
+        return {}, {}, {}
+
     results: dict[str, dict[str, int]] = {}
     metadata: dict[str, str] = {"gpu_name": "unknown", "commit_hash": "unknown", "file_name": ci_file.name}
     individual_tests: dict[str, str] = {}
 
-    current_model: str | None = None
-    model_results = {"PASSED": 0, "FAILED": 0, "SKIPPED": 0, "ERROR": 0}
-    lines = content.splitlines()
+    # Extract metadata from top level
+    metadata.update({
+        "gpu_name": data.get("gpu_name", "unknown"),
+        "commit_hash": data.get("commit_hash", "unknown"),
+        "total_status_count": data.get("total_status_count", {}),
+    })
 
-    # First line metadata (JSON)
-    if lines and lines[0].lstrip().startswith("{"):
-        try:
-            first_line_data = json.loads(lines[0])
-            if isinstance(first_line_data, dict):
-                metadata.update(
-                    {
-                        "gpu_name": first_line_data.get("gpu_name", "unknown"),
-                        "commit_hash": first_line_data.get("commit_hash", "unknown"),
-                        "total_status_count": first_line_data.get("total_status_count", {}),
-                    }
-                )
-                # Normalize to uppercase keys for OVERALL
-                overall = {}
-                raw_overall = first_line_data.get("total_status_count", {}) or {}
-                for k, v in raw_overall.items():
-                    k_up = _normalize_status_key(k)
-                    if k_up in {"PASSED", "FAILED", "SKIPPED", "ERROR"}:
-                        overall[k_up] = int(v)
-                overall["TOTAL"] = sum(overall.values())
-                results["OVERALL"] = overall
-        except json.JSONDecodeError:
-            print(f"Warning: Could not parse metadata from first line of {ci_file}", file=sys.stderr)
+    # Create OVERALL section from total_status_count
+    overall = {}
+    raw_overall = data.get("total_status_count", {}) or {}
+    for k, v in raw_overall.items():
+        k_up = _normalize_status_key(k)
+        if k_up in {"PASSED", "FAILED", "SKIPPED", "ERROR", "NULL"}:
+            overall[k_up] = int(v)
+    overall["TOTAL"] = sum(overall.values())
+    results["OVERALL"] = overall
 
-    # Remaining lines
-    for raw in lines[1:]:
-        line = raw.strip()
-        if not line:
-            continue
-        # Heuristic for section/model header: single token (letters/underscores/dashes), no '::'
-        if (
-            not line.startswith(("PASSED ", "FAILED ", "SKIPPED ", "ERROR "))
-            and "::" not in line
-            and line.replace("_", "").replace("-", "").isalnum()
-        ):
-            if current_model and any(model_results.values()):
-                model_results["TOTAL"] = sum(model_results.values())
-                results[current_model] = model_results.copy()
-            current_model = line
-            model_results = {"PASSED": 0, "FAILED": 0, "SKIPPED": 0, "ERROR": 0}
-            continue
-        # Test line
-        if line.startswith(("PASSED ", "FAILED ", "SKIPPED ", "ERROR ")):
-            try:
-                status, nodeid = line.split(" ", 1)
-            except ValueError:
-                continue
+    # Process results array
+    model_results_list = data.get("results", [])
+    for model_data in model_results_list:
+        model_name = model_data.get("model", "unknown")
+        model_test_results = model_data.get("results", [])
+        
+        # Initialize counters for this model
+        model_results = {"PASSED": 0, "FAILED": 0, "SKIPPED": 0, "ERROR": 0, "NULL": 0}
+        
+        # Process each test result for this model
+        for test_result in model_test_results:
+            status = test_result.get("status", "unknown")
+            nodeid = test_result.get("line", "")
+            count = test_result.get("count", 1)
+            
+            # Normalize status to uppercase
             status = _normalize_status_key(status)
-            nodeid = nodeid.strip()
+            
             # Record individual test outcome
-            individual_tests[nodeid] = status
-            # Tally under current model if any
-            if current_model and status in model_results:
-                model_results[status] += 1
-
-    if current_model and any(model_results.values()):
+            if nodeid and status in {"PASSED", "FAILED", "SKIPPED", "ERROR", "NULL"}:
+                individual_tests[nodeid] = status
+                
+                # Add to model results counter
+                if status in model_results:
+                    model_results[status] += count
+        
+        # Add TOTAL for this model
         model_results["TOTAL"] = sum(model_results.values())
-        results[current_model] = model_results.copy()
+        results[model_name] = model_results
 
     print(
-        f"Parsed results for {len(results)} models/sections from GPU: {metadata['gpu_name']}",
+        f"Parsed JSON results for {len(results)} models/sections from GPU: {metadata['gpu_name']}",
         file=sys.stderr,
     )
+    print(f"Total individual tests parsed: {len(individual_tests)}", file=sys.stderr)
+    
     return results, metadata, individual_tests
 
 
@@ -1164,11 +1158,11 @@ def main() -> None:
     # CI results analysis
     g(
         "--analyze-ci",
-        metavar="CI_FILE",
+        metavar="CI_FILE.json",
         nargs="+",
         help=(
-            "Analyze one or more CI results files for multi-GPU comparison. "
-            + "Each file should start with JSON metadata: {\"gpu_name\": \"h100\", \"commit_hash\": \"abc123\", ...}"
+            "Analyze one or more CI results JSON files for multi-GPU comparison. "
+            + "Each file should be a JSON object with 'gpu_name', 'commit_hash', 'total_status_count', and 'results' fields."
         ),
     )
 
