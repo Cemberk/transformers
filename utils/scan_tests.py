@@ -15,8 +15,8 @@ Bucketing Strategy:
 Key CLI modes:
 • Discovery only: python bucket_tests.py [--bucket P-1|P0|P1|P2|P3|CPU] [--yaml buckets.yaml] [--print]
 • Export to Excel: python bucket_tests.py --export-excel results.xlsx
-• Analyze CI results: python bucket_tests.py --analyze-ci results.txt --export-excel full_report.xlsx
-• Multi-GPU analysis: python bucket_tests.py --analyze-ci file1.txt file2.txt file3.txt --export-excel multi_gpu_report.xlsx
+• Analyze CI results: python bucket_tests.py --analyze-ci results.json --export-excel full_report.xlsx
+• Multi-GPU analysis: python bucket_tests.py --analyze-ci file1.json file2.json file3.json --export-excel multi_gpu_report.xlsx
 
 Multi-GPU CI File Format:
 Each CI results file should start with a JSON metadata line:
@@ -29,7 +29,7 @@ FAILED test_path::TestClass::test_method
 ...
 
 Usage: 
-python3 scan_tests.py --analyze-ci collated_reports_MI325_4d57c39.txt collated_reports_h100_4d57c39.txt collated_reports_MI355_4d57c39.txt --export-excel multi_gpu_report.xlsx --debug
+python3 scan_tests.py --analyze-ci collated_reports_MI325_4d57c39.json collated_reports_h100_4d57c39.json collated_reports_MI355_4d57c39.json --export-excel multi_gpu_report.xlsx --debug
 
 Key fixes in this version:
 - Correctly parses CI files into *per-test* (nodeid) status maps (individual_tests), so coverage is non-zero.
