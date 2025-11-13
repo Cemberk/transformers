@@ -67,8 +67,11 @@ To create the package for pypi.
 9. Copy the release notes from RELEASE.md to the tag in github once everything is looking hunky-dory.
 """
 
+import os
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from setuptools import Command, find_packages, setup
@@ -86,6 +89,24 @@ if stale_egg_info.exists():
         "See https://github.com/pypa/pip/issues/5466 for details.\n"
     )
     shutil.rmtree(stale_egg_info)
+
+
+# Check for ROCm system (similar to IS_ROCM_SYSTEM in testing_utils.py)
+def is_rocm_system():
+    """Check if this is a ROCm system, similar to IS_ROCM_SYSTEM in testing_utils.py"""
+    # First check if torch is already installed
+    try:
+        import torch
+        return torch.version.hip is not None
+    except ImportError:
+        pass
+
+    # Check for ROCm installation indicators
+    return (
+        os.environ.get('ROCM_HOME') or
+        os.environ.get('HIP_PATH') or
+        os.path.exists('/opt/rocm')
+    )
 
 
 # IMPORTANT:
@@ -352,23 +373,57 @@ extras["all"] = (
 )
 
 
-extras["dev-torch"] = (
-    extras["testing"]
-    + extras["torch"]
-    + extras["sentencepiece"]
-    + extras["tokenizers"]
-    + extras["torch-speech"]
-    + extras["vision"]
-    + extras["integrations"]
-    + extras["timm"]
-    + extras["torch-vision"]
-    + extras["codecarbon"]
-    + extras["quality"]
-    + extras["ja"]
-    + extras["sklearn"]
-    + extras["modelcreation"]
-    + extras["num2words"]
-)
+# Handle dev-torch installation based on GPU vendor
+if is_rocm_system():
+    # For ROCm systems, check if torch is already installed
+    try:
+        import torch
+        print("✓ PyTorch with ROCm already installed - proceeding with dev-torch installation")
+        extras["dev-torch"] = (
+            extras["testing"]
+            + extras["torch"]
+            + extras["sentencepiece"]
+            + extras["tokenizers"]
+            + extras["torch-speech"]
+            + extras["vision"]
+            + extras["integrations"]
+            + extras["timm"]
+            + extras["torch-vision"]
+            + extras["codecarbon"]
+            + extras["quality"]
+            + extras["ja"]
+            + extras["sklearn"]
+            + extras["modelcreation"]
+            + extras["num2words"]
+        )
+    except ImportError:
+        # ROCm system but torch not installed - provide instructions
+        print("\n" + "="*80)
+        print("ROCm system detected!")
+        print("Please install PyTorch with ROCm support before installing dev-torch:")
+        print("\n  pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2")
+        print("\nThen run: pip install .[dev-torch]")
+        print("="*80 + "\n")
+        sys.exit(1)
+else:
+    # Standard installation for CUDA/CPU systems
+    extras["dev-torch"] = (
+        extras["testing"]
+        + extras["torch"]
+        + extras["sentencepiece"]
+        + extras["tokenizers"]
+        + extras["torch-speech"]
+        + extras["vision"]
+        + extras["integrations"]
+        + extras["timm"]
+        + extras["torch-vision"]
+        + extras["codecarbon"]
+        + extras["quality"]
+        + extras["ja"]
+        + extras["sklearn"]
+        + extras["modelcreation"]
+        + extras["num2words"]
+    )
 
 extras["dev"] = (
     extras["all"] + extras["testing"] + extras["quality"] + extras["ja"] + extras["sklearn"] + extras["modelcreation"]
